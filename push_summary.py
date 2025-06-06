@@ -54,14 +54,19 @@ def generate_summary_from_papers(papers):
 ### 📄 论文列表
 {papers_markdown}
 """
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "你是一位专业的医学影像研究分析助手"},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response["choices"][0]["message"]["content"]
+   from openai import OpenAI
+
+client = OpenAI()
+
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": "你是一位专业的医学影像研究分析助手"},
+        {"role": "user", "content": prompt}
+    ]
+)
+summary = response.choices[0].message.content
+
 
 # -------- STEP 3: 推送到 Notion --------
 def push_to_notion(content):
