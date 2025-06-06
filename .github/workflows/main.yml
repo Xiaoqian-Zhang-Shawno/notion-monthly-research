@@ -18,10 +18,12 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests openai feedparser
 
       - name: Push Summary to Notion
         run: python push_summary.py
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+          PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          QUERY_KEYWORDS: ${{ secrets.QUERY_KEYWORDS }}
