@@ -1,0 +1,27 @@
+name: Monthly Notion Summary
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'  # 每月1号 UTC 零点执行
+  workflow_dispatch:
+
+jobs:
+  notion-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Push Summary to Notion
+        run: python push_summary.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
