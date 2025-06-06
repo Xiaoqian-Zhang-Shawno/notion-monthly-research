@@ -3,7 +3,7 @@ import openai
 import requests
 from datetime import datetime, timedelta
 import feedparser
-from urllib.parse import quote_plus
+from urllib.parse import urlencode
 
 # 获取环境变量
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
@@ -21,9 +21,16 @@ past_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 def fetch_arxiv_papers(max_results=10):
     base_url = "http://export.arxiv.org/api/query"
     keywords = [kw.strip() for kw in QUERY_KEYWORDS.split(",")]
-    encoded_query = " OR ".join(quote_plus(k) for k in keywords)
-    query = f"search_query=all:{encoded_query}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
-    feed_url = f"{base_url}?{query}"
+    raw_query = " OR ".join(keywords)
+    query_params = {
+        "search_query": f"all:{raw_query}",
+        "start": 0,
+        "max_results": max_results,
+        "sortBy": "submittedDate",
+        "sortOrder": "descending"
+    }
+    query_string = urlencode(query_params)
+    feed_url = f"{base_url}?{query_string}"
     feed = feedparser.parse(feed_url)
     papers = []
     for entry in feed.entries:
