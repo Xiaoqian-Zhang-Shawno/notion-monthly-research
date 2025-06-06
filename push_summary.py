@@ -1,23 +1,24 @@
 import os
-import openai
 import requests
-from datetime import datetime, timedelta
 import feedparser
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
+from openai import OpenAI
+
+# 初始化 OpenAI 客户端
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # 获取环境变量
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
 PAGE_ID = os.environ["PAGE_ID"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS", "medical imaging, segmentation, ultrasound, CT")
 
-# 初始化 GPT
-openai.api_key = OPENAI_API_KEY
+# 时间格式
 today = datetime.today()
 today_fmt = today.strftime("%Y年%m月")
 past_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 
-# -------- STEP 1: 抓取 arXiv 论文 --------
+# 抓取 arXiv 论文
 def fetch_arxiv_papers(max_results=10):
     base_url = "http://export.arxiv.org/api/query"
     keywords = [kw.strip() for kw in QUERY_KEYWORDS.split(",")]
@@ -40,7 +41,7 @@ def fetch_arxiv_papers(max_results=10):
         papers.append(f"- [{date}] {title} ({link})")
     return papers
 
-# -------- STEP 2: 构造 ChatGPT Prompt 并获取摘要 --------
+# 使用 GPT 生成总结
 def generate_summary_from_papers(papers):
     papers_markdown = "\n".join(papers)
     prompt = f"""
@@ -54,21 +55,16 @@ def generate_summary_from_papers(papers):
 ### 📄 论文列表
 {papers_markdown}
 """
-   from openai import OpenAI
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "你是一位专业的医学影像研究分析助手"},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
 
-client = OpenAI()
-
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[
-        {"role": "system", "content": "你是一位专业的医学影像研究分析助手"},
-        {"role": "user", "content": prompt}
-    ]
-)
-summary = response.choices[0].message.content
-
-
-# -------- STEP 3: 推送到 Notion --------
+# 推送到 Notion 页面
 def push_to_notion(content):
     url = f"https://api.notion.com/v1/blocks/{PAGE_ID}/children"
     headers = {
@@ -91,7 +87,7 @@ def push_to_notion(content):
     res = requests.patch(url, headers=headers, json=payload)
     print("Push result:", res.status_code, res.text)
 
-# -------- 主流程 --------
+# 执行主流程
 if __name__ == "__main__":
     papers = fetch_arxiv_papers()
     summary = generate_summary_from_papers(papers)
