@@ -3,12 +3,13 @@ import openai
 import requests
 from datetime import datetime, timedelta
 import feedparser
+from urllib.parse import quote_plus
 
 # 获取环境变量
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
 PAGE_ID = os.environ["PAGE_ID"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS", "medical imaging, ultrasound, segmentation")
+QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS", "medical imaging, segmentation, ultrasound, CT")
 
 # 初始化 GPT
 openai.api_key = OPENAI_API_KEY
@@ -19,7 +20,9 @@ past_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 # -------- STEP 1: 抓取 arXiv 论文 --------
 def fetch_arxiv_papers(max_results=10):
     base_url = "http://export.arxiv.org/api/query"
-    query = f"search_query=all:{QUERY_KEYWORDS.replace(',', ' OR')}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
+    keywords = [kw.strip() for kw in QUERY_KEYWORDS.split(",")]
+    encoded_query = " OR ".join(quote_plus(k) for k in keywords)
+    query = f"search_query=all:{encoded_query}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
     feed_url = f"{base_url}?{query}"
     feed = feedparser.parse(feed_url)
     papers = []
