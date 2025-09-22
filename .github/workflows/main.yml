@@ -2,26 +2,12 @@ name: Monthly Notion Summary
 
 on:
   schedule:
-    - cron: '0 0 1 * *'     # 每月1号 UTC 00:00 运行（日本时间 JST=UTC+9 → 当天 09:00）
+    - cron: '0 0 1 * *'
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: monthly-notion-summary
-  cancel-in-progress: false
 
 jobs:
   notion-update:
     runs-on: ubuntu-latest
-
-    env:
-      # 指向 DeepSeek 的 OpenAI 兼容端点
-      OPENAI_BASE_URL: https://api.deepseek.com
-      # （可选）默认关键词，也可以用 secrets 覆盖
-      # QUERY_KEYWORDS: medical imaging, segmentation, ultrasound, CT
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,10 +24,10 @@ jobs:
           pip install "openai>=1.0.0" requests feedparser
 
       - name: Push Summary to Notion
+        run: python push_summary.py   # 如果文件在子目录要改路径
         env:
-          NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
-          PAGE_ID:          ${{ secrets.NOTION_PAGE_ID }}
-          OPENAI_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}   # 用 DeepSeek 的 key
-          QUERY_KEYWORDS:   ${{ secrets.QUERY_KEYWORDS }}
-        run: |
-          python push_summary.py
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+          OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENAI_BASE_URL: https://api.deepseek.com
+          QUERY_KEYWORDS: ${{ secrets.QUERY_KEYWORDS }}
