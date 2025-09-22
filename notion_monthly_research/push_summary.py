@@ -36,10 +36,7 @@ if not NOTION_TOKEN or not PAGE_ID:
 
 # 初始化 DeepSeek（OpenAI 兼容）客户端
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-resp = client.chat.completions.create(
-    model="deepseek-reasoner",
-    messages=[ ... ]
-)
+
 
 # 时间
 today = datetime.today()
@@ -149,7 +146,7 @@ def generate_summary_from_papers(papers: List[str]) -> str:
     for attempt in range(3):
         try:
             resp = client.chat.completions.create(
-                model="deepseek-chat",  # 或 "deepseek-reasoner"
+                model="deepseek-reasoner",  # 或 "deepseek-reasoner"
                 messages=[
                     {"role": "system", "content": "你是一位专业的AI算法和大模型研究分析助手"},
                     {"role": "user", "content": prompt}
