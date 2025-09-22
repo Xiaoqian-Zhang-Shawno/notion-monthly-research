@@ -2,16 +2,31 @@ name: Monthly Notion Summary
 
 on:
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1 * *'   # 每月1号 UTC 零点
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   notion-update:
     runs-on: ubuntu-latest
 
+    env:
+      OPENAI_BASE_URL: https://api.deepseek.com
+      # 可选：默认关键词（也可用 secrets 覆盖）
+      # QUERY_KEYWORDS: medical imaging, segmentation, ultrasound, CT
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show repo tree (debug)
+        run: |
+            pwd
+            ls -la
+            echo "---------"
+            python -V || true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,12 +37,54 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install "openai>=1.0.0" requests feedparser
+          python -m pip show openai requests feedparser
 
-      - name: Push Summary to Notion
-        run: python push_summary.py
+      # ✅ 环境与凭据自检（不会打印机密，只打印长度）
+      - name: Preflight check (env)
+        run: |
+          python - << 'PY'
+          import os, re, sys
+          def mask(s):
+              if not s: return "MISSING"
+              return f"len={len(s)}"
+          print("OPENAI_BASE_URL =", os.environ.get("OPENAI_BASE_URL"))
+          print("OPENAI_API_KEY  =", mask(os.environ.get("OPENAI_API_KEY")))
+          print("NOTION_TOKEN    =", mask(os.environ.get("NOTION_TOKEN")))
+          print("PAGE_ID         =", os.environ.get("PAGE_ID"))
+          print("QUERY_KEYWORDS  =", os.environ.get("QUERY_KEYWORDS"))
+          # 粗检 PAGE_ID 格式（Notion 常见 32位或带短横线的UUID）
+          pid = os.environ.get("PAGE_ID","")
+          ok = bool(re.fullmatch(r"[0-9a-fA-F-]{32,36}", pid))
+          if not ok:
+              print("WARNING: PAGE_ID 看起来不像 UUID（可能不对）。")
+          PY
+
+      # ✅ DeepSeek 烟测（极小请求，便于快速定位 Key/网络问题）
+      - name: DeepSeek smoke test
         env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
           OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          OPENAI_BASE_URL: https://api.deepseek.com
+        run: |
+          python - << 'PY'
+          import os
+          from openai import OpenAI
+          client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"])
+          r = client.chat.completions.create(
+              model="deepseek-chat",
+              messages=[{"role":"user","content":"ping"}],
+              max_tokens=8,
+              temperature=0
+          )
+          print("DeepSeek OK:", r.choices[0].message.content.strip())
+          PY
+
+      - name: Run push_summary.py
+        env:
+          OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          NOTION_TOKEN:   ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID:        ${{ secrets.NOTION_PAGE_ID }}
           QUERY_KEYWORDS: ${{ secrets.QUERY_KEYWORDS }}
+        run: |
+          set -o pipefail
+          python -u push_summary.py 2>&1 | tee run.log
+          echo "---- tail run.log ----"
+          tail -n 50 run.log || true
