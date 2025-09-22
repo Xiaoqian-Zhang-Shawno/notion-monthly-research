@@ -2,7 +2,7 @@ name: Monthly Notion Summary
 
 on:
   schedule:
-    - cron: '0 0 1 * *'   # 每月1号 UTC 零点
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 permissions:
@@ -14,8 +14,6 @@ jobs:
 
     env:
       OPENAI_BASE_URL: https://api.deepseek.com
-      # 可选：默认关键词（也可用 secrets 覆盖）
-      # QUERY_KEYWORDS: medical imaging, segmentation, ultrasound, CT
 
     steps:
       - name: Checkout
@@ -23,10 +21,8 @@ jobs:
 
       - name: Show repo tree (debug)
         run: |
-            pwd
-            ls -la
-            echo "---------"
-            python -V || true
+          pwd
+          ls -la
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,52 +35,75 @@ jobs:
           pip install "openai>=1.0.0" requests feedparser
           python -m pip show openai requests feedparser
 
-      # ✅ 环境与凭据自检（不会打印机密，只打印长度）
+      # --- 预检：确认 Secrets 是否注入（不打印明文，只打印长度）---
       - name: Preflight check (env)
+        env:
+          OPENAI_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}
+          NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID:          ${{ secrets.NOTION_PAGE_ID }}
+          QUERY_KEYWORDS:   ${{ secrets.QUERY_KEYWORDS }}
         run: |
-          python - << 'PY'
-          import os, re, sys
-          def mask(s):
-              if not s: return "MISSING"
-              return f"len={len(s)}"
-          print("OPENAI_BASE_URL =", os.environ.get("OPENAI_BASE_URL"))
-          print("OPENAI_API_KEY  =", mask(os.environ.get("OPENAI_API_KEY")))
-          print("NOTION_TOKEN    =", mask(os.environ.get("NOTION_TOKEN")))
-          print("PAGE_ID         =", os.environ.get("PAGE_ID"))
-          print("QUERY_KEYWORDS  =", os.environ.get("QUERY_KEYWORDS"))
-          # 粗检 PAGE_ID 格式（Notion 常见 32位或带短横线的UUID）
+          python - <<'PY'
+          import os, re
+          def mask(v): 
+              return "MISSING" if not v else f"len={len(v)}"
+          print("OPENAI_BASE_URL:", os.environ.get("OPENAI_BASE_URL"))
+          print("OPENAI_API_KEY :", mask(os.environ.get("OPENAI_API_KEY")))
+          print("NOTION_TOKEN   :", mask(os.environ.get("NOTION_TOKEN")))
+          print("PAGE_ID        :", os.environ.get("PAGE_ID"))
           pid = os.environ.get("PAGE_ID","")
-          ok = bool(re.fullmatch(r"[0-9a-fA-F-]{32,36}", pid))
-          if not ok:
-              print("WARNING: PAGE_ID 看起来不像 UUID（可能不对）。")
+          print("PAGE_ID looks like UUID?:", bool(re.fullmatch(r"[0-9a-fA-F-]{32,36}", pid)))
           PY
 
-      # ✅ DeepSeek 烟测（极小请求，便于快速定位 Key/网络问题）
+      # --- DeepSeek 烟测：最小调用 ---
       - name: DeepSeek smoke test
         env:
           OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
-          python - << 'PY'
+          python - <<'PY'
           import os
           from openai import OpenAI
           client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"])
           r = client.chat.completions.create(
-              model="deepseek-chat",
-              messages=[{"role":"user","content":"ping"}],
-              max_tokens=8,
-              temperature=0
+            model="deepseek-chat",
+            messages=[{"role":"user","content":"ping"}],
+            max_tokens=8, temperature=0
           )
           print("DeepSeek OK:", r.choices[0].message.content.strip())
           PY
 
+      # --- Notion 烟测：往页面追加一小段文本 ---
+      - name: Notion smoke test
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID:      ${{ secrets.NOTION_PAGE_ID }}
+        run: |
+          python - <<'PY'
+          import os, json, requests, sys
+          url = f"https://api.notion.com/v1/blocks/{os.environ['PAGE_ID']}/children"
+          headers = {
+            "Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          }
+          payload = {"children":[{"object":"block","type":"paragraph",
+                     "paragraph":{"rich_text":[{"type":"text","text":{"content":"(actions smoke test) ✅"}}]}}]}
+          r = requests.patch(url, headers=headers, json=payload, timeout=30)
+          print("Notion status:", r.status_code)
+          if r.status_code != 200:
+            print("Body:", r.text)
+            sys.exit(1)
+          PY
+
+      # --- 真正运行你的脚本，并把日志输出 ---
       - name: Run push_summary.py
         env:
-          OPENAI_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          NOTION_TOKEN:   ${{ secrets.NOTION_TOKEN }}
-          PAGE_ID:        ${{ secrets.NOTION_PAGE_ID }}
-          QUERY_KEYWORDS: ${{ secrets.QUERY_KEYWORDS }}
+          OPENAI_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}
+          NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID:          ${{ secrets.NOTION_PAGE_ID }}
+          QUERY_KEYWORDS:   ${{ secrets.QUERY_KEYWORDS }}
         run: |
           set -o pipefail
           python -u push_summary.py 2>&1 | tee run.log
           echo "---- tail run.log ----"
-          tail -n 50 run.log || true
+          tail -n 80 run.log || true
