@@ -25,7 +25,7 @@ DEEPSEEK_API_KEY = os.environ.get("OPENAI_API_KEY")
 DEEPSEEK_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 PAGE_ID = os.environ.get("PAGE_ID")
-QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS", "medical imaging, segmentation, ultrasound, CT")
+QUERY_KEYWORDS = os.environ.get("多模态解耦", "多模态增强, 对比, 对齐, 大模型微调")
 
 if not DEEPSEEK_API_KEY:
     print("ERROR: 请设置环境变量 OPENAI_API_KEY 为你的 DeepSeek API Key")
@@ -36,6 +36,10 @@ if not NOTION_TOKEN or not PAGE_ID:
 
 # 初始化 DeepSeek（OpenAI 兼容）客户端
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+resp = client.chat.completions.create(
+    model="deepseek-reasoner",
+    messages=[ ... ]
+)
 
 # 时间
 today = datetime.today()
