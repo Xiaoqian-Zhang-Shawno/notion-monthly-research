@@ -8,6 +8,7 @@ on:
 jobs:
   notion-update:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +17,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -24,7 +24,7 @@ jobs:
           pip install "openai>=1.0.0" requests feedparser
 
       - name: Push Summary to Notion
-        run: python push_summary.py   # 如果文件在子目录要改路径
+        run: python push_summary.py
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
