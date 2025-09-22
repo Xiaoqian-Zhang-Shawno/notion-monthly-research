@@ -25,7 +25,7 @@ DEEPSEEK_API_KEY = os.environ.get("OPENAI_API_KEY")
 DEEPSEEK_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 PAGE_ID = os.environ.get("PAGE_ID")
-QUERY_KEYWORDS = os.environ.get("多模态解耦", "多模态增强, 对比, 对齐, 大模型微调")
+QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS","Large model fine-tuning, multimodal decoupling, multimodal alignment, multimodal enhancement")
 
 if not DEEPSEEK_API_KEY:
     print("ERROR: 请设置环境变量 OPENAI_API_KEY 为你的 DeepSeek API Key")
