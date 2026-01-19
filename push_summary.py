@@ -235,7 +235,7 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
             resp = client.chat.completions.create(
                 model="deepseek-reasoner",  # 或 "deepseek-reasoner"
                 messages=[
-                    {"role": "system", "content": "你是一位专业的AI算法和大模型研究分析助手"},
+                    {"role": "system", "content": "你是一位专业的AI算法和大模型研究分析助手，一个领域内的教授"},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.5
