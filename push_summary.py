@@ -175,7 +175,7 @@ def fetch_arxiv_papers(max_results=10) -> List[str]:
 
 
 def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
-    """抓取 CCF-A 会议/期刊的最新论文（语义学者 API）。返回 Markdown 列表行。"""
+    """抓取 CCF-A/B 会议/期刊的最新论文（语义学者 API）。返回 Markdown 列表行。"""
     venues = [venue.strip() for venue in CCF_A_VENUES.split(",") if venue.strip()]
     results: List[str] = []
     for venue in venues:
@@ -193,7 +193,7 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
             res.raise_for_status()
             data = res.json()
         except requests.RequestException as exc:
-            print(f"CCF-A fetch failed for {venue}: {exc}")
+            print(f"CCF-A/B fetch failed for {venue}: {exc}")
             continue
 
         for paper in data.get("data", []):
@@ -206,16 +206,16 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
                 return results
 
     if not results:
-        results.append("- （近30天未抓到相关 CCF-A 论文）")
+        results.append("- （近30天未抓到相关 CCF-A/B 论文）")
     return results[:max_total]
 
 
 def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str]) -> str:
     """用 DeepSeek 生成 Markdown 总结（OpenAI 兼容 Chat Completions）"""
     papers_markdown = "\n".join(arxiv_papers) if arxiv_papers else "- （近30天未抓到相关论文）"
-    ccf_a_markdown = "\n".join(ccf_a_papers) if ccf_a_papers else "- （近30天未抓到相关 CCF-A 论文）"
+    ccf_a_markdown = "\n".join(ccf_a_papers) if ccf_a_papers else "- （近30天未抓到相关 CCF-A/B 论文）"
     prompt = f"""
-以下是近 30 天内与“{QUERY_KEYWORDS}”相关的 arXiv 论文列表，以及 CCF-A 会议/期刊的最新论文列表，请根据它们总结当前多模态解耦、融合、对比、增强研究以及大模型微调的关键趋势、热点方向和研究关注点。输出请使用 Markdown，并按以下格式：
+以下是近 30 天内与“{QUERY_KEYWORDS}”相关的 arXiv 论文列表，以及 CCF-A/B 会议/期刊的最新论文列表，请根据它们总结当前多模态解耦、融合、对比、增强研究以及大模型微调的关键趋势、热点方向和研究关注点。输出请使用 Markdown，并按以下格式：
 
 ## {today_fmt} 多模态研究热点论文总结
 
@@ -225,7 +225,7 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
 ### 📄 arXiv 论文列表
 {papers_markdown}
 
-### 🏛️ CCF-A 最新论文
+### 🏛️ CCF-A/B 最新论文
 {ccf_a_markdown}
 """.strip()
 
