@@ -1,6 +1,21 @@
 # notion-monthly-research
-#本项目旨在实现一个 自动化的学术论文月度总结工作流。系统通过 GitHub Actions 定时触发，调用 DeepSeek API 从 arXiv 获取近一个月的相关研究论文，并利用大模型自动生成趋势分析与总结。随后，结果会被推送到指定的 Notion 页面，形成可视化的月度研究动态归档。整个过程无需人工干预，能够帮助研究人员高效追踪领域前沿进展，并保持学术资料的持续积累与同步。<br>
-shawno的每月AI影像热点周报，任务更新日志<br>
+
+![notion-monthly-research 漫画封面，档案员将论文收入月度活页册](assets/readme/hero.webp)
+
+**定期检索论文，将研究趋势与来源条目归档到 Notion。**
+
+GitHub Actions 每月 1 日运行，也支持手动触发。脚本按关键词检索 arXiv，通过 Semantic Scholar 获取指定 CCF-A 会场的近期条目，再由 DeepSeek 根据论文列表生成 Markdown 趋势摘要。
+
+[工作流程](#工作流程) · [前置准备](#1-前置准备) · [配置 Secrets](#2-配置-github-secrets) · [本地调试](#5-本地调试可选)
+
+## 工作流程
+
+![GitHub Actions 每月或手动触发，脚本获取 arXiv 与 Semantic Scholar 条目，DeepSeek 生成 Markdown，再转换为区块并追加到 Notion 页面。](assets/readme/workflow-zh.webp)
+
+[可编辑源图（draw.io）](assets/readme/workflow-zh.drawio)
+
+<details>
+<summary>早期更新日志</summary>
 
 2025.06.06<br>
 _notion上成功更新了，这是伟大的开始_<br>
@@ -8,9 +23,9 @@ _notion上成功更新了，这是伟大的开始_<br>
 2025.09.22<br>
 md,gpt太贵了我更新了接口，可以使用所有大模型，我现在换成了deepseek<br>
 
----
+</details>
 
-# 使用方法
+## 使用方法
 
 ## 1. 前置准备
 
@@ -37,7 +52,7 @@ md,gpt太贵了我更新了接口，可以使用所有大模型，我现在换�
 * `DEEPSEEK_API_KEY` = 你的 DeepSeek API Key (`sk-...`)
 * `NOTION_TOKEN` = 你的 Notion 集成 token (`secret_...`)
 * `NOTION_PAGE_ID` = Notion 页面 ID (`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
-* （可选）`QUERY_KEYWORDS` = 你想监控的关键词（默认值是 `"medical imaging, segmentation, ultrasound, CT"`）
+* （可选）`QUERY_KEYWORDS` = 你想监控的关键词（可填写 `"medical imaging, segmentation, ultrasound, CT"`）
 
 ---
 
@@ -60,9 +75,9 @@ on:
 
 1. Workflow 会执行 `push_summary.py`：
 
-   * 抓取近 30 天的 arXiv 论文（按关键词）。
-   * 使用 DeepSeek 模型自动总结研究趋势。
-   * 推送总结结果到你的 Notion 页面。
+   * 从 arXiv 取按提交时间倒序排列的关键词匹配条目，并从 Semantic Scholar 的指定会场结果中筛选近 30 天的 CCF-A 论文。
+   * 使用 DeepSeek 根据检索到的论文列表生成 Markdown 摘要。
+   * 将 Markdown 转成 Notion 区块，再追加到目标页面。
 
 2. 运行完成后，打开 Notion 页面即可看到新内容。
 
