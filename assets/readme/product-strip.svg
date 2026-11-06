@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 433 35" width="433" height="35" role="img">
+<path d="M8 2H139L131 28H0Z" fill="#FF91AF"/>
+<path d="M3 32H131" stroke="#FF91AF" stroke-width="2"/>
+<text x="69.5" y="19" fill="#282455" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" letter-spacing=".6">GITHUB ACTIONS</text>
+<path d="M155 2H286L278 28H147Z" fill="#282455"/>
+<path d="M150 32H278" stroke="#FF91AF" stroke-width="2"/>
+<text x="216.5" y="19" fill="#FFFFFF" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" letter-spacing=".6">MONTHLY DIGEST</text>
+<path d="M302 2H433L425 28H294Z" fill="#282455"/>
+<path d="M297 32H425" stroke="#FF91AF" stroke-width="2"/>
+<text x="363.5" y="19" fill="#FFFFFF" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" letter-spacing=".6">NOTION ARCHIVE</text>
+</svg>
