@@ -154,7 +154,7 @@ def notion_append_blocks(page_or_block_id: str, blocks: List[Dict]):
 # =========================
 def fetch_arxiv_papers(max_results=10) -> List[str]:
     """抓取 arXiv 最近论文（按提交时间倒序）。返回 Markdown 列表行。"""
-    base_url = "http://export.arxiv.org/api/query"
+    base_url = "https://export.arxiv.org/api/query"
     keywords = [kw.strip() for kw in QUERY_KEYWORDS.split(",") if kw.strip()]
     raw_query = " OR ".join(keywords) if keywords else "medical imaging"
     params = {
@@ -165,14 +165,21 @@ def fetch_arxiv_papers(max_results=10) -> List[str]:
         "sortOrder": "descending"
     }
     feed_url = f"{base_url}?{urlencode(params)}"
-    feed = feedparser.parse(feed_url)
+    response = requests.get(feed_url, timeout=30)
+    response.raise_for_status()
+    feed = feedparser.parse(response.content)
+    if feed.get("bozo") or feed.get("version") != "atom10":
+        raise RuntimeError("arXiv returned an invalid Atom feed")
 
     papers = []
     for entry in feed.entries:
+        if "/api/errors" in entry.get("id", ""):
+            raise RuntimeError("arXiv rejected the search query")
         title = entry.title.strip().replace("\n", " ")
         date = entry.published.split("T")[0] if hasattr(entry, "published") else ""
         link = entry.link
         papers.append(f"- [{date}] {title} ({link})")
+    print(f"arXiv papers retrieved: {len(papers)}")
     return papers
 
 
@@ -180,6 +187,7 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
     """抓取 CCF-A 会议/期刊的最新论文（语义学者 API）。返回 Markdown 列表行。"""
     venues = [venue.strip() for venue in CCF_A_VENUES.split(",") if venue.strip()]
     results: List[str] = []
+    failures = []
     for venue in venues:
         params = {
             "query": f'venue:"{venue}"',
@@ -196,6 +204,9 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
             data = res.json()
         except requests.RequestException as exc:
             print(f"CCF-A fetch failed for {venue}: {exc}")
+            failures.append(venue)
+            if exc.response is not None and exc.response.status_code == 429:
+                break
             continue
 
         for paper in data.get("data", []):
@@ -207,6 +218,8 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
             if len(results) >= max_total:
                 return results
 
+    if failures:
+        results.append("- （Semantic Scholar 请求失败或被限流，本次 CCF-A 检索不完整，不能据此判断没有相关论文）")
     if not results:
         results.append("- （近30天未抓到相关 CCF-A 论文）")
     return results[:max_total]
@@ -217,7 +230,7 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
     papers_markdown = "\n".join(arxiv_papers) if arxiv_papers else "- （近30天未抓到相关论文）"
     ccf_a_markdown = "\n".join(ccf_a_papers) if ccf_a_papers else "- （近30天未抓到相关 CCF-A 论文）"
     prompt = f"""
-以下是近 30 天内与“{QUERY_KEYWORDS}”相关的 arXiv 论文列表，以及 CCF-A 会议/期刊的最新论文列表，请根据它们总结当前多模态解耦、融合、对比、增强研究以及大模型微调的关键趋势、热点方向和研究关注点。输出请使用 Markdown，并按以下格式：
+以下是与“{QUERY_KEYWORDS}”相关的 arXiv 论文列表，以及 CCF-A 会议/期刊的最新论文列表，请根据它们总结当前多模态解耦、融合、对比、增强研究以及大模型微调的关键趋势、热点方向和研究关注点。仅依据提供的论文条目总结，明确保留数据源失败或缺失说明，不能编造论文、指标或完整覆盖结论。输出请使用 Markdown，并按以下格式：
 
 ## {today_fmt} 多模态研究热点论文总结
 
@@ -256,7 +269,9 @@ def main():
     print("Fetching CCF-A papers...")
     ccf_a_papers = fetch_ccf_a_papers(max_results_per_venue=3, max_total=12)
 
-    print("Generating summary with DeepSeek...")
+    if not papers and not any("http" in item for item in ccf_a_papers):
+        raise RuntimeError("No paper records retrieved; summary generation stopped.")
+    print("Generating summary with configured model...")
     summary_md = generate_summary_from_papers(papers, ccf_a_papers)
     notion_blocks = markdown_to_notion_blocks(summary_md)
 

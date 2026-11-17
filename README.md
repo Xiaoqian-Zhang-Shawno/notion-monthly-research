@@ -73,6 +73,8 @@ python -u push_summary.py
 > [!NOTE]
 > 本地运行会实际请求论文源和模型，并写入 Notion。模型收到的是检索到的论文条目。密钥应通过环境变量或 Actions Secrets 注入。
 
+Semantic Scholar 被限流时，报告会标记 CCF-A 检索不完整。两组数据都没有论文记录时，任务会停止生成摘要。
+
 ## 故障排查
 
 | 现象 | 优先检查 |
