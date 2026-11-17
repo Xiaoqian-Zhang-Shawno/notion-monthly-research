@@ -50,7 +50,7 @@ Actions 默认直连 DeepSeek，摘要使用 `deepseek-reasoner`，烟测使用 
 
 1. 有 OrcaRouter 账号的用户可直接创建 API 密钥。新用户可通过[项目推荐链接](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377)注册。通过该链接注册并付费时，项目维护者可能获得分成。
 2. 在仓库的 **Settings → Secrets and variables → Actions** 中，添加 Secret `ORCAROUTER_API_KEY`，并在 **Variables** 中设置 `LLM_PROVIDER` 为 `orcarouter`。
-3. 手动运行工作流验证。烟测和摘要使用 `deepseek/deepseek-v4-flash-free`。免费模型的可用性以平台目录为准。
+3. 手动运行工作流验证。单次试跑可选择服务商 `orcarouter`，并勾选创建独立 Notion 测试页。测试页会创建在已授权目标页下，运行结束会核验摘要区块。烟测和摘要使用 `deepseek/deepseek-v4-flash-free`。免费模型的可用性以平台目录为准。
 
 本地运行还可设置逗号分隔的 `CCF_A_VENUES`。当前 Actions 配置使用脚本内置的会场列表。arXiv 使用关键词，Semantic Scholar 使用会场查询与日期过滤。
 

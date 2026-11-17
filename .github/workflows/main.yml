@@ -4,6 +4,19 @@ on:
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:
+    inputs:
+      provider:
+        description: Model provider for this run
+        type: choice
+        options:
+          - configured
+          - deepseek
+          - orcarouter
+        default: configured
+      test_page:
+        description: Create and verify a separate Notion test page
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -11,12 +24,13 @@ permissions:
 jobs:
   notion-update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     env:
-      OPENAI_BASE_URL: ${{ vars.LLM_PROVIDER == 'orcarouter' && 'https://api.orcarouter.ai/v1' || 'https://api.deepseek.com' }}
-      OPENAI_MODEL: ${{ vars.LLM_PROVIDER == 'orcarouter' && 'deepseek/deepseek-v4-flash-free' || 'deepseek-reasoner' }}
-      OPENAI_SMOKE_MODEL: ${{ vars.LLM_PROVIDER == 'orcarouter' && 'deepseek/deepseek-v4-flash-free' || 'deepseek-chat' }}
-      OPENAI_SMOKE_MAX_TOKENS: ${{ vars.LLM_PROVIDER == 'orcarouter' && 512 || 8 }}
+      OPENAI_BASE_URL: ${{ (inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'https://api.orcarouter.ai/v1' || 'https://api.deepseek.com' }}
+      OPENAI_MODEL: ${{ (inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'deepseek/deepseek-v4-flash-free' || 'deepseek-reasoner' }}
+      OPENAI_SMOKE_MODEL: ${{ (inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'deepseek/deepseek-v4-flash-free' || 'deepseek-chat' }}
+      OPENAI_SMOKE_MAX_TOKENS: ${{ (inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 512 || 8 }}
 
     steps:
       - name: Checkout
@@ -41,7 +55,7 @@ jobs:
       # --- 预检：确认 Secrets 是否注入（不打印明文，只打印长度）---
       - name: Preflight check (env)
         env:
-          OPENAI_API_KEY:   ${{ secrets[vars.LLM_PROVIDER == 'orcarouter' && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
+          OPENAI_API_KEY:   ${{ secrets[(inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
           NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
           PAGE_ID:          ${{ secrets.NOTION_PAGE_ID }}
           QUERY_KEYWORDS:   ${{ secrets.QUERY_KEYWORDS }}
@@ -53,7 +67,7 @@ jobs:
           print("OPENAI_BASE_URL:", os.environ.get("OPENAI_BASE_URL"))
           print("OPENAI_API_KEY :", mask(os.environ.get("OPENAI_API_KEY")))
           print("NOTION_TOKEN   :", mask(os.environ.get("NOTION_TOKEN")))
-          print("PAGE_ID        :", os.environ.get("PAGE_ID"))
+          print("PAGE_ID        :", mask(os.environ.get("PAGE_ID")))
           pid = os.environ.get("PAGE_ID","")
           print("PAGE_ID looks like UUID?:", bool(re.fullmatch(r"[0-9a-fA-F-]{32,36}", pid)))
           PY
@@ -61,7 +75,7 @@ jobs:
       # --- 模型烟测：最小调用 ---
       - name: LLM smoke test
         env:
-          OPENAI_API_KEY: ${{ secrets[vars.LLM_PROVIDER == 'orcarouter' && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
+          OPENAI_API_KEY: ${{ secrets[(inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
         run: |
           python - <<'PY'
           import os
@@ -75,11 +89,44 @@ jobs:
           print("LLM OK:", r.choices[0].message.content.strip())
           PY
 
+      - name: Create isolated Notion test page
+        id: test-page
+        if: inputs.test_page
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PARENT_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          import requests
+
+          title = "OrcaRouter integration test " + os.environ["GITHUB_RUN_ID"]
+          response = requests.post(
+              "https://api.notion.com/v1/pages",
+              headers={
+                  "Authorization": "Bearer " + os.environ["NOTION_TOKEN"],
+                  "Notion-Version": "2022-06-28",
+                  "Content-Type": "application/json",
+              },
+              json={
+                  "parent": {"page_id": os.environ["PARENT_PAGE_ID"]},
+                  "properties": {"title": {"title": [{"text": {"content": title}}]}},
+              },
+              timeout=30,
+          )
+          response.raise_for_status()
+          page_id = response.json()["id"]
+          print("::add-mask::" + page_id)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("page_id=" + page_id + "\n")
+          print("Created isolated test page.")
+          PYTHON
+
       # --- Notion 烟测：往页面追加一小段文本 ---
       - name: Notion smoke test
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          PAGE_ID:      ${{ secrets.NOTION_PAGE_ID }}
+          PAGE_ID:      ${{ steps.test-page.outputs.page_id || secrets.NOTION_PAGE_ID }}
         run: |
           python - <<'PY'
           import os, json, requests, sys
@@ -101,12 +148,38 @@ jobs:
       # --- 真正运行你的脚本，并把日志输出 ---
       - name: Run push_summary.py
         env:
-          OPENAI_API_KEY:   ${{ secrets[vars.LLM_PROVIDER == 'orcarouter' && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
+          OPENAI_API_KEY:   ${{ secrets[(inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
           NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
-          PAGE_ID:          ${{ secrets.NOTION_PAGE_ID }}
+          PAGE_ID:          ${{ steps.test-page.outputs.page_id || secrets.NOTION_PAGE_ID }}
           QUERY_KEYWORDS:   ${{ secrets.QUERY_KEYWORDS }}
         run: |
           set -o pipefail
           python -u push_summary.py 2>&1 | tee run.log
           echo "---- tail run.log ----"
           tail -n 80 run.log || true
+
+      - name: Verify generated Notion blocks
+        if: inputs.test_page
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PAGE_ID: ${{ steps.test-page.outputs.page_id }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          import requests
+
+          response = requests.get(
+              "https://api.notion.com/v1/blocks/" + os.environ["PAGE_ID"] + "/children",
+              headers={
+                  "Authorization": "Bearer " + os.environ["NOTION_TOKEN"],
+                  "Notion-Version": "2022-06-28",
+              },
+              timeout=30,
+          )
+          response.raise_for_status()
+          blocks = response.json()["results"]
+          assert len(blocks) > 1, "Only smoke-test output was written"
+          assert any(block["type"].startswith("heading_") for block in blocks), "Missing summary heading"
+          assert any(block["type"] == "bulleted_list_item" for block in blocks), "Missing paper or trend list"
+          print("Verified", len(blocks), "Notion blocks including headings and lists.")
+          PYTHON
