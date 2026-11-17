@@ -1,4 +1,6 @@
 import os
+import argparse
+from pathlib import Path
 import sys
 import time
 import json
@@ -8,6 +10,7 @@ import feedparser
 from datetime import datetime, timedelta
 from typing import List, Dict
 from openai import OpenAI
+from bs4 import BeautifulSoup
 
 # =========================
 # 环境变量（请先在系统里配置）
@@ -28,20 +31,12 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "deepseek-reasoner")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 PAGE_ID = os.environ.get("PAGE_ID")
 QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS", "").strip() or "Large model fine-tuning, multimodal decoupling, multimodal alignment, multimodal enhancement"
-CCF_A_VENUES = os.environ.get(
-    "CCF_A_VENUES",
+CCF_A_VENUES = os.environ.get("CCF_A_VENUES", "").strip() or (
     "NeurIPS, ICML, ICLR, CVPR, ICCV, ECCV, ACL, EMNLP, NAACL, AAAI, IJCAI, KDD, WWW, SIGIR"
 )
 
-if not DEEPSEEK_API_KEY:
-    print("ERROR: 请设置环境变量 OPENAI_API_KEY 为所选模型服务商的 API Key")
-    sys.exit(1)
-if not NOTION_TOKEN or not PAGE_ID:
-    print("ERROR: 请设置环境变量 NOTION_TOKEN 与 PAGE_ID")
-    sys.exit(1)
-
-# 初始化 DeepSeek（OpenAI 兼容）客户端
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+# A client can be injected by tests; real clients are created only for generation.
+client = None
 
 
 # 时间
@@ -55,7 +50,9 @@ past_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 # =========================
 def chunk_text(text: str, chunk_size: int = 1800) -> List[str]:
     """将长文本切成多段，避免 Notion 单块过长"""
-    lines = text.splitlines()
+    lines = []
+    for line in text.splitlines():
+        lines.extend(line[i:i + chunk_size] for i in range(0, max(len(line), 1), chunk_size))
     chunks, cur, cur_len = [], [], 0
     for ln in lines:
         ln_len = len(ln) + 1
@@ -69,6 +66,30 @@ def chunk_text(text: str, chunk_size: int = 1800) -> List[str]:
     return chunks
 
 
+def notion_rich_text(text: str) -> List[Dict]:
+    """Render the inline formatting emitted by the report."""
+    pattern = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)|\*\*([^*]+)\*\*|\x60([^\x60]+)\x60")
+    rich_text = []
+    position = 0
+    for match in pattern.finditer(text):
+        if match.start() > position:
+            rich_text.append({"type": "text", "text": {"content": text[position:match.start()]}})
+        label, url, bold, code = match.groups()
+        content = label or bold or code
+        item = {"type": "text", "text": {"content": content}}
+        if url:
+            item["text"]["link"] = {"url": url}
+        if bold:
+            item["annotations"] = {"bold": True}
+        if code:
+            item["annotations"] = {"code": True}
+        rich_text.append(item)
+        position = match.end()
+    if position < len(text):
+        rich_text.append({"type": "text", "text": {"content": text[position:]}})
+    return rich_text
+
+
 def build_text_blocks(block_type: str, text: str) -> List[Dict]:
     blocks = []
     for piece in chunk_text(text, 1800):
@@ -76,7 +97,7 @@ def build_text_blocks(block_type: str, text: str) -> List[Dict]:
             "object": "block",
             "type": block_type,
             block_type: {
-                "rich_text": [{"type": "text", "text": {"content": piece}}]
+                "rich_text": notion_rich_text(piece)
             }
         })
     return blocks
@@ -133,19 +154,20 @@ def notion_append_blocks(page_or_block_id: str, blocks: List[Dict]):
         "Content-Type": "application/json"
     }
 
-    payload = {"children": blocks}
-    # 轻量重试
-    for attempt in range(3):
-        res = requests.patch(url, headers=headers, json=payload, timeout=30)
-        if res.status_code in (200, 201):
-            print("Notion push OK.")
-            return
-        print(f"Notion push failed [{res.status_code}]: {res.text}")
-        if res.status_code in (429, 500, 502, 503, 504):
-            time.sleep(2 ** attempt)
-            continue
-        break
-    raise RuntimeError("Push to Notion failed.")
+    for offset in range(0, len(blocks), 100):
+        payload = {"children": blocks[offset:offset + 100]}
+        for attempt in range(3):
+            res = requests.patch(url, headers=headers, json=payload, timeout=30)
+            if res.status_code in (200, 201):
+                break
+            if res.status_code != 429 or attempt == 2:
+                raise RuntimeError(f"Notion append failed (HTTP {res.status_code}); some earlier blocks may have been written.")
+            retry_after = res.headers.get("Retry-After", "")
+            delay = int(retry_after) if retry_after.isdigit() else 2 ** attempt
+            if delay > 60:
+                raise RuntimeError("Notion requested a longer retry delay; stop this run and retry later.")
+            time.sleep(delay)
+    print(f"Notion push OK: {len(blocks)} blocks.")
 
 
 # =========================
@@ -175,7 +197,7 @@ def paper_entry(title: str, abstract: str, date: str, link: str, matches: List[s
     # Evidence excerpts are explicitly bounded, not represented as full papers.
     excerpt = " ".join(abstract.split())[:1500]
     evidence = f"摘要摘录（最多1500字符）：{excerpt}" if excerpt else "摘要缺失，仅有标题信息"
-    return f"- [{date}] {title} ({link})\n  命中关键词：{', '.join(matches)}\n  {evidence}"
+    return f"### [{title}]({link})\n\n日期 {date} · 命中关键词 {', '.join(matches)}\n\n{evidence}\n"
 
 
 def fetch_arxiv_papers(max_results=10) -> List[str]:
@@ -226,6 +248,61 @@ def fetch_arxiv_papers(max_results=10) -> List[str]:
         if len(papers) >= max_results:
             break
     print(f"arXiv candidates: {len(feed.entries)}; relevant recent papers: {len(papers)}")
+    return papers
+
+
+def parse_arxiv_search(html: str, max_results: int) -> List[str]:
+    """Parse the publisher's search results, including full abstracts."""
+    soup = BeautifulSoup(html, "html.parser")
+    entries = soup.select("li.arxiv-result")
+    if not entries and not re.search(r"no results|sorry", soup.get_text(" ", strip=True), re.I):
+        raise RuntimeError("Unrecognized arXiv search page")
+    papers = []
+    seen = set()
+    for entry in entries:
+        title_node = entry.select_one("p.title")
+        abstract_node = entry.select_one(".abstract-full")
+        link_node = entry.select_one(".list-title a")
+        dates = re.findall(r"\b\d{1,2} [A-Z][a-z]+, \d{4}\b", entry.get_text(" ", strip=True))
+        if title_node is None or link_node is None or not dates:
+            continue
+        date = min(datetime.strptime(value, "%d %B, %Y") for value in dates).strftime("%Y-%m-%d")
+        if abstract_node is not None:
+            for control in abstract_node.select("a"):
+                control.decompose()
+        title = title_node.get_text(" ", strip=True)
+        abstract = abstract_node.get_text(" ", strip=True) if abstract_node else ""
+        link = link_node.get("href", "")
+        identifier = re.sub(r"v\d+$", "", link)
+        matches = matched_keywords(title, abstract)
+        if not matches or not past_date <= date <= today.strftime("%Y-%m-%d"):
+            continue
+        if not link.startswith("https://arxiv.org/abs/") or identifier in seen:
+            continue
+        seen.add(identifier)
+        papers.append(paper_entry(title, abstract, date, link, matches))
+        if len(papers) >= max_results:
+            break
+    print(f"arXiv search candidates: {len(entries)}; relevant recent papers: {len(papers)}")
+    return papers
+
+
+def fetch_arxiv_search_papers(max_results=12) -> List[str]:
+    """One publisher search page when the Atom API is unavailable."""
+    response = requests.get(
+        "https://arxiv.org/search/",
+        params={
+            "query": " OR ".join(f'"{phrase}"' for phrase in search_keywords()),
+            "searchtype": "all",
+            "abstracts": "show",
+            "order": "-announced_date_first",
+            "size": 50,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    papers = parse_arxiv_search(response.text, max_results)
+    papers.append("- 数据源状态：arXiv API 暂不可用，使用公开搜索页的前 50 条候选并本地筛选，覆盖范围有限。")
     return papers
 
 
@@ -306,10 +383,13 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
 </venue_records>
 """.strip()
 
+    active_client = client or OpenAI(
+        api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=90, max_retries=1
+    )
     # 轻量重试
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
+            resp = active_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "你是一位专业的AI算法和大模型研究分析助手"},
@@ -321,35 +401,57 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
             if not observation or not observation.strip():
                 raise RuntimeError("Model returned an empty summary")
             return (
-                f"## {today_fmt} 研究论文追踪\n\n"
+                f"# {today_fmt} 研究论文追踪\n\n"
                 f"检索主题：{QUERY_KEYWORDS}\n\n"
                 f"日期范围：{past_date} 至 {today.strftime('%Y-%m-%d')}。"
                 "仅覆盖本次返回并通过筛选的记录，摘要摘录未经全文核验。\n\n"
-                f"### 样本观察\n{observation.strip()}\n\n"
-                f"### arXiv 论文列表\n{papers_markdown}\n\n"
-                f"### 指定会场论文与检索状态\n{ccf_a_markdown}"
+                f"## 样本观察\n{observation.strip()}\n\n"
+                f"## arXiv 论文列表\n{papers_markdown}\n\n"
+                f"## 指定会场论文与检索状态\n{ccf_a_markdown}"
             )
         except Exception as e:
-            print(f"模型 API 调用失败（第 {attempt+1} 次）: {e}")
+            print(f"模型 API 调用失败（第 {attempt+1} 次）: {type(e).__name__}")
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError("模型生成失败，请检查网络/API Key/额度。")
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Track recent papers and publish a report to Notion.")
+    parser.add_argument("--fetch-only", action="store_true", help="Inspect source records without a model or Notion call.")
+    parser.add_argument("--dry-run", action="store_true", help="Generate the report without writing to Notion.")
+    parser.add_argument("--output", type=Path, help="Save the Markdown report at this path.")
+    args = parser.parse_args(argv)
+    if not args.fetch_only and not DEEPSEEK_API_KEY:
+        raise RuntimeError("Set OPENAI_API_KEY for the selected model provider.")
+    if not (args.fetch_only or args.dry_run) and (not NOTION_TOKEN or not PAGE_ID):
+        raise RuntimeError("Set NOTION_TOKEN and PAGE_ID before publishing.")
     print(f"Keywords: {QUERY_KEYWORDS}")
     print("Fetching arXiv...")
     try:
         papers = fetch_arxiv_papers(max_results=12)
     except (requests.RequestException, RuntimeError):
-        print("arXiv unavailable; checking the other source.")
-        papers = ["- （arXiv 请求失败或被限流，本次预印本检索不完整）"]
+        print("arXiv API unavailable; trying one publisher search page.")
+        try:
+            papers = fetch_arxiv_search_papers(max_results=12)
+        except (requests.RequestException, RuntimeError, ValueError):
+            papers = ["- （arXiv API 与公开搜索页均不可用，本次预印本检索不完整）"]
     print("Fetching CCF-A papers...")
     ccf_a_papers = fetch_ccf_a_papers(max_results_per_venue=3, max_total=12)
 
     if not any("http" in item for item in papers + ccf_a_papers):
         raise RuntimeError("No paper records retrieved; summary generation stopped.")
-    print("Generating summary with configured model...")
-    summary_md = generate_summary_from_papers(papers, ccf_a_papers)
+    if args.fetch_only:
+        summary_md = "\n\n".join(papers + ccf_a_papers)
+    else:
+        print("Generating summary with configured model...")
+        summary_md = generate_summary_from_papers(papers, ccf_a_papers)
+    if args.output:
+        args.output.write_text(summary_md + "\n", encoding="utf-8")
+    if args.fetch_only or args.dry_run:
+        if not args.output:
+            print(summary_md)
+        return
+
     notion_blocks = markdown_to_notion_blocks(summary_md)
 
     print("Pushing to Notion...")

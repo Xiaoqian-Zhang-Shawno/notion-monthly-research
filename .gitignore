@@ -1,0 +1,19 @@
+# Local credentials and private working material; this does not untrack old commits.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+credentials*.json
+secrets*.json
+.private/
+private/
+
+# Local runtime output and environments.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
