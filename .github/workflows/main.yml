@@ -148,6 +148,7 @@ jobs:
       # --- 真正运行你的脚本，并把日志输出 ---
       - name: Run push_summary.py
         env:
+          SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
           OPENAI_API_KEY:   ${{ secrets[(inputs.provider == 'orcarouter' || ((inputs.provider == '' || inputs.provider == 'configured') && vars.LLM_PROVIDER == 'orcarouter')) && 'ORCAROUTER_API_KEY' || 'DEEPSEEK_API_KEY'] }}
           NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
           PAGE_ID:          ${{ steps.test-page.outputs.page_id || secrets.NOTION_PAGE_ID }}
