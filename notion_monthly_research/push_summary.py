@@ -15,7 +15,8 @@ from openai import OpenAI
 # =========================
 # DeepSeek
 #   OPENAI_API_KEY=<你的 DeepSeek API Key>
-#   OPENAI_BASE_URL=https://api.deepseek.com   （也可不设，用下面的默认）
+#   OPENAI_BASE_URL=https://api.deepseek.com   （可选）
+#   OPENAI_MODEL=deepseek-reasoner            （可选）
 # Notion
 #   NOTION_TOKEN=<你的 Notion 集成密钥>
 #   PAGE_ID=<要写入的页面或块的 block_id>
@@ -24,6 +25,7 @@ from openai import OpenAI
 
 DEEPSEEK_API_KEY = os.environ.get("OPENAI_API_KEY")
 DEEPSEEK_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "deepseek-reasoner")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 PAGE_ID = os.environ.get("PAGE_ID")
 QUERY_KEYWORDS = os.environ.get("QUERY_KEYWORDS","Large model fine-tuning, multimodal decoupling, multimodal alignment, multimodal enhancement")
@@ -33,7 +35,7 @@ CCF_A_VENUES = os.environ.get(
 )
 
 if not DEEPSEEK_API_KEY:
-    print("ERROR: 请设置环境变量 OPENAI_API_KEY 为你的 DeepSeek API Key")
+    print("ERROR: 请设置环境变量 OPENAI_API_KEY 为所选模型服务商的 API Key")
     sys.exit(1)
 if not NOTION_TOKEN or not PAGE_ID:
     print("ERROR: 请设置环境变量 NOTION_TOKEN 与 PAGE_ID")
@@ -211,7 +213,7 @@ def fetch_ccf_a_papers(max_results_per_venue=3, max_total=12) -> List[str]:
 
 
 def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str]) -> str:
-    """用 DeepSeek 生成 Markdown 总结（OpenAI 兼容 Chat Completions）"""
+    """通过 OpenAI 兼容 Chat Completions 生成 Markdown 总结"""
     papers_markdown = "\n".join(arxiv_papers) if arxiv_papers else "- （近30天未抓到相关论文）"
     ccf_a_markdown = "\n".join(ccf_a_papers) if ccf_a_papers else "- （近30天未抓到相关 CCF-A 论文）"
     prompt = f"""
@@ -233,7 +235,7 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
     for attempt in range(3):
         try:
             resp = client.chat.completions.create(
-                model="deepseek-reasoner",  # 或 "deepseek-reasoner"
+                model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "你是一位专业的AI算法和大模型研究分析助手"},
                     {"role": "user", "content": prompt}
@@ -242,9 +244,9 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
             )
             return resp.choices[0].message.content
         except Exception as e:
-            print(f"DeepSeek API 调用失败（第 {attempt+1} 次）: {e}")
+            print(f"模型 API 调用失败（第 {attempt+1} 次）: {e}")
             time.sleep(1.5 * (attempt + 1))
-    raise RuntimeError("DeepSeek 生成失败，请检查网络/API Key/额度。")
+    raise RuntimeError("模型生成失败，请检查网络/API Key/额度。")
 
 
 def main():

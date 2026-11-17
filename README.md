@@ -21,7 +21,7 @@ GitHub Actions 每月 1 日运行，也支持手动触发。脚本按关键词�
 | 触发 | 每月 1 日 UTC 00:00 或手动运行 | GitHub Actions 作业 |
 | arXiv | 逗号分隔的主题关键词 | 按提交时间倒序取最多 12 条匹配条目 |
 | Semantic Scholar | CCF-A 会场列表 | 每个会场查询最多 3 条，再按近 30 天的发布日期筛选，合计最多 12 条 |
-| DeepSeek | 两组论文列表 | Markdown 趋势摘要与论文条目 |
+| 模型服务商 | 两组论文列表 | Markdown 趋势摘要与论文条目 |
 | Notion | 转换后的标题、段落和列表区块 | 追加到已授权的目标页面 |
 
 ## 首次运行
@@ -30,7 +30,7 @@ GitHub Actions 每月 1 日运行，也支持手动触发。脚本按关键词�
 2. 在 [DeepSeek 控制台](https://platform.deepseek.com/) 创建 API 密钥。在 [Notion My Integrations](https://www.notion.com/my-integrations) 创建集成，保存集成 token。
 3. 在目标 Notion 页面打开 **··· → 添加连接**，授权该集成，并复制页面 ID。首次调试可以使用单独的测试页。
 4. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 添加下表所需的 Secrets。
-5. 从 **Actions → Monthly Notion Summary → Run workflow** 手动运行一次。在运行日志中检查 DeepSeek 与 Notion 步骤，再打开目标页查看新增标题、摘要与两组论文列表。
+5. 从 **Actions → Monthly Notion Summary → Run workflow** 手动运行一次。在运行日志中检查模型与 Notion 步骤，再打开目标页查看新增标题、摘要与两组论文列表。
 
 > [!IMPORTANT]
 > Actions 会向目标页追加一条 smoke test，再运行正式摘要脚本。手动重跑会再次追加内容，现有工作流按追加模式运行。
@@ -44,7 +44,13 @@ GitHub Actions 每月 1 日运行，也支持手动触发。脚本按关键词�
 | `NOTION_PAGE_ID` | `PAGE_ID` | 摘要追加到的页面 |
 | `QUERY_KEYWORDS`（可选） | `QUERY_KEYWORDS` | 例如 `medical imaging, segmentation, ultrasound, CT` |
 
-Actions 的端点由工作流中的 `OPENAI_BASE_URL` 指定，摘要脚本请求 `deepseek-reasoner`，Actions 烟测请求 `deepseek-chat`。若更换供应商，需要一并确认两个请求使用的模型 ID 和端点。
+Actions 默认直连 DeepSeek，摘要使用 `deepseek-reasoner`，烟测使用 `deepseek-chat`。
+
+### 可选服务商 OrcaRouter
+
+1. 有 OrcaRouter 账号的用户可直接创建 API 密钥。新用户可通过[项目推荐链接](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377)注册。通过该链接注册并付费时，项目维护者可能获得分成。
+2. 在仓库的 **Settings → Secrets and variables → Actions** 中，添加 Secret `ORCAROUTER_API_KEY`，并在 **Variables** 中设置 `LLM_PROVIDER` 为 `orcarouter`。
+3. 手动运行工作流验证。烟测和摘要使用 `deepseek/deepseek-v4-flash-free`。免费模型的可用性以平台目录为准。
 
 本地运行还可设置逗号分隔的 `CCF_A_VENUES`。当前 Actions 配置使用脚本内置的会场列表。arXiv 使用关键词，Semantic Scholar 使用会场查询与日期过滤。
 
@@ -58,7 +64,7 @@ source .venv/bin/activate
 python -m pip install "openai>=1.0.0" requests feedparser
 ```
 
-在当前 shell 中设置 `OPENAI_API_KEY`、`NOTION_TOKEN` 和 `PAGE_ID`。按需设置 `OPENAI_BASE_URL` 与 `QUERY_KEYWORDS`。运行与 Actions 相同的摘要脚本。
+在当前 shell 中设置 `OPENAI_API_KEY`、`NOTION_TOKEN` 和 `PAGE_ID`。按需设置 `OPENAI_BASE_URL`、`OPENAI_MODEL` 与 `QUERY_KEYWORDS`。本地使用 OrcaRouter 时，把 `OPENAI_BASE_URL` 设为 `https://api.orcarouter.ai/v1`、`OPENAI_MODEL` 设为 `deepseek/deepseek-v4-flash-free`，并通过 `OPENAI_API_KEY` 提供该平台的密钥。运行与 Actions 相同的摘要脚本。
 
 ```bash
 python -u push_summary.py
@@ -72,7 +78,7 @@ python -u push_summary.py
 | 现象 | 优先检查 |
 | --- | --- |
 | Actions 没有运行 | 检查仓库是否启用 Actions，手动触发一次以定位配置问题。 |
-| 模型鉴权或模型 ID 报错 | 检查 `DEEPSEEK_API_KEY`、端点，以及烟测与正式摘要各自使用的模型。 |
+| 模型鉴权或模型 ID 报错 | 检查所选服务商对应的 Secret、端点，以及烟测与正式摘要各自使用的模型。 |
 | Notion 返回权限或找不到页面错误 | 检查集成是否已添加为目标页面的连接，以及页面 ID 是否正确。 |
 | CCF-A 列表为空 | 查看是否有会场请求失败，再确认日期窗口内是否有返回条目。 |
 | 页面只出现 smoke test | 检查正式摘要步骤的日志，确认检索、模型请求及最终追加执行到了哪一步。 |
