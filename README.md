@@ -1,121 +1,140 @@
 # notion-monthly-research
 
+**把关注的研究主题，变成 Notion 里可回溯来源的论文清单。**
+
 ![notion-monthly-research 漫画封面，档案员将论文收入月度活页册](assets/readme/hero.webp)
 
 ![GitHub Actions、月度摘要、Notion 归档](assets/readme/product-strip.svg)
 
-**定期检索论文，将研究趋势与来源条目归档到 Notion。**
+为用 Notion 整理论文的研究者准备的个人工具：按关键词追踪近期 arXiv 论文与指定会场记录，生成中文样本观察，并把论文标题、日期、命中关键词和来源链接一起归档。每月自动运行，也可以手动触发。
 
-GitHub Actions 每月 1 日运行，也支持手动触发。脚本按关键词检索 arXiv，通过 Semantic Scholar 获取指定 CCF-A 会场的近期条目，再由所选模型根据标题与摘要摘录生成样本观察。
+[真实检索节选](examples/source-preview.md) · [首次运行](#首次运行) · [不接模型先试检索](#本地运行与预览) · [故障排查](#故障排查) · [使用与授权](#使用与授权)
 
-[首次运行](#首次运行) · [工作流程](#工作流程) · [配置参考](#配置参考) · [本地运行](#本地运行) · [故障排查](#故障排查)
+## 它能帮你做什么
 
-## 工作流程
+- **省去重复整理**：定期抓取、筛选和追加到自己授权的 Notion 页面。
+- **保留核验入口**：可点击的论文标题、日期和摘要摘录随报告保留，不只留一段模型总结。
+- **自行选择服务商**：默认 DeepSeek，可选 OrcaRouter；密钥由你自己配置。
+- **先预览再写入**：可只检索，或生成本地 Markdown；首次 Actions 试跑可创建独立子页面。
 
-[![GitHub Actions 触发后，脚本获取 arXiv 与 Semantic Scholar 条目，DeepSeek 生成 Markdown，再转换为区块并追加到 Notion 页面。](assets/readme/workflow-zh.webp)](assets/readme/workflow-zh.webp)
-
-[可编辑源图（draw.io）](assets/readme/workflow-zh.drawio) · [Actions 工作流](.github/workflows/main.yml) · [摘要脚本](push_summary.py)
-
-| 阶段 | 输入 | 产物 |
-| --- | --- | --- |
-| 触发 | 每月 1 日 UTC 00:00 或手动运行 | GitHub Actions 作业 |
-| arXiv | 逗号分隔的主题关键词 | 近 30 天内按提交时间倒序取候选，核验标题/摘要短语匹配后保留最多 12 条 |
-| Semantic Scholar | CCF-A 会场列表 | 一次批量请求同时限定关键词、会场和近 30 天日期；本地核验后每个会场最多 3 条，合计最多 12 条 |
-| 模型服务商 | 两组论文列表 | 样本观察；程序附加原始论文条目与数据源状态 |
-| Notion | 转换后的标题、段落和列表区块 | 追加到已授权的目标页面 |
+适合已有研究主题、愿意配置 GitHub Actions 和 Notion 集成的用户。当前是可自行部署的研究工具，不是托管订阅服务，也不是完整的系统性综述检索平台。
 
 ## 首次运行
 
-1. Fork 仓库，进入 **Actions**，启用工作流。
-2. 在 [DeepSeek 控制台](https://platform.deepseek.com/) 创建 API 密钥。在 [Notion My Integrations](https://www.notion.com/my-integrations) 创建集成，保存集成 token。
-3. 在目标 Notion 页面打开 **··· → 添加连接**，授权该集成，并复制页面 ID。首次调试可以使用单独的测试页。
-4. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 添加下表所需的 Secrets。
-5. 从 **Actions → Monthly Notion Summary → Run workflow** 手动运行一次。在运行日志中检查模型与 Notion 步骤，再打开目标页查看新增标题、摘要与两组论文列表。
+需要 GitHub 账号、可授权的 Notion 页面，以及所选服务商的 API 密钥。先阅读[使用与授权](#使用与授权)。
 
-> [!IMPORTANT]
-> Actions 会向目标页追加一条 smoke test，再运行正式摘要脚本。手动重跑会再次追加内容，现有工作流按追加模式运行。
+1. Fork 仓库，进入 **Actions**，启用工作流。
+2. 在 [Notion My Integrations](https://www.notion.com/my-integrations) 创建集成，保存 token；在目标页面的 **··· → 添加连接** 中授权该集成。复制页面 ID（URL 中的 32 位 ID，不是整个 URL）。
+3. 在仓库 **Settings → Secrets and variables → Actions → Secrets** 中添加以下三项：
+
+| Secret | 默认 DeepSeek | 使用 OrcaRouter |
+| --- | --- | --- |
+| 模型密钥 | `DEEPSEEK_API_KEY` | `ORCAROUTER_API_KEY` |
+| Notion 集成 token | `NOTION_TOKEN` | `NOTION_TOKEN` |
+| 目标页面 ID | `NOTION_PAGE_ID` | `NOTION_PAGE_ID` |
+
+4. 在同页的 **Variables** 中设置 `QUERY_KEYWORDS`，例如 `multimodal alignment, contrastive learning`。若使用 OrcaRouter，再设置 `LLM_PROVIDER=orcarouter`；不设置则使用 DeepSeek。
+5. 进入 **Actions → Monthly Notion Summary → Run workflow**。第一次建议勾选 `test_page`，把报告写到目标页下新建的独立子页面。`provider=configured` 使用仓库配置，也可单次指定服务商。
+6. 等待任务完成，在 Notion 检查“样本观察”、两组论文与数据源状态。测试模式会进一步核验报告章节和可点击的论文标题。之后不勾选 `test_page`，就会追加到目标页。
+
+每月 1 日 **UTC 00:00 / 北京时间 08:00** 自动执行。重复运行会再次追加，暂不自动覆盖或跨次去重。若写入中途失败，应先检查已有区块再决定是否重跑。
+
+## 可选服务商与费用
+
+默认配置直连 [DeepSeek](https://platform.deepseek.com/)，使用 `deepseek-reasoner`。使用 OrcaRouter 时，当前预设模型为 `deepseek/deepseek-v4-flash-free`，端点为 `https://api.orcarouter.ai/v1`。模型可用性、额度和价格以服务商当前页面为准，不承诺永久免费。
+
+已有 OrcaRouter 账号可直接使用自己的密钥；新用户可以通过[项目推荐链接](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377)注册。**利益披露：符合平台归因与结算规则的付费消费，可能为维护者带来分成。** 使用推荐链接不是运行工具的前提，选择其他服务商也不影响工具功能。
+
+模型调用、GitHub Actions 和其他服务可能产生各自费用，请查看自己账号的额度。代码不会替你充值，也不会自动购买套餐。
 
 ## 配置参考
 
-| GitHub Secret | 脚本读取的变量 | 用途 |
+| 配置 | 放置位置 | 作用 |
 | --- | --- | --- |
-| `DEEPSEEK_API_KEY` | `OPENAI_API_KEY` | 调用 DeepSeek 的密钥 |
-| `NOTION_TOKEN` | `NOTION_TOKEN` | 已授权目标页面的集成 token |
-| `NOTION_PAGE_ID` | `PAGE_ID` | 摘要追加到的页面 |
-| `QUERY_KEYWORDS`（可选） | `QUERY_KEYWORDS` | 例如 `medical imaging, segmentation, ultrasound, CT` |
+| `LLM_PROVIDER` | Actions Variable | `deepseek`（默认）或 `orcarouter` |
+| `QUERY_KEYWORDS` | Actions Variable | 逗号分隔的主题短语；也兼容旧版同名 Secret，Variable 优先 |
+| `CCF_A_VENUES` | Actions Variable | 可选的逗号分隔会场列表；不设置时使用脚本默认列表 |
+| `SEMANTIC_SCHOLAR_API_KEY` | Actions Secret | 可选，供 Semantic Scholar 请求使用 |
 
-Actions 默认直连 DeepSeek，摘要使用 `deepseek-reasoner`，烟测使用 `deepseek-chat`。
+关键词按“任一完整短语命中”处理，检查标题和摘要，忽略大小写和连字符差异。例如 `CT` 不会误匹配 `activity`，但较宽的主题仍可能带来你不需要的论文。同义词和缩写应自行补充；它不是语义检索。
 
-### 可选服务商 OrcaRouter
+`CCF_A_VENUES` 是历史配置名称。实际会场以配置列表和 Semantic Scholar 索引为准，程序不负责认证当前 CCF 等级或穷尽全部会场。
 
-1. 有 OrcaRouter 账号的用户可直接创建 API 密钥。新用户可通过[项目推荐链接](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377)注册。通过该链接注册并付费时，项目维护者可能获得分成。
-2. 在仓库的 **Settings → Secrets and variables → Actions** 中，添加 Secret `ORCAROUTER_API_KEY`，并在 **Variables** 中设置 `LLM_PROVIDER` 为 `orcarouter`。
-3. 手动运行工作流验证。单次试跑可选择服务商 `orcarouter`，并勾选创建独立 Notion 测试页。测试页会创建在已授权目标页下，运行结束会核验摘要区块。烟测和摘要使用 `deepseek/deepseek-v4-flash-free`。免费模型的可用性以平台目录为准。
+## 本地运行与预览
 
-本地运行还可设置逗号分隔的 `CCF_A_VENUES`。当前 Actions 配置使用脚本内置的会场列表。两个数据源都按主题、日期筛选。逗号分隔的关键词按“任一短语命中”处理，大小写与连字符不敏感，检查标题和摘要中的完整词边界。例如 `CT` 不会命中 `activity`。短语匹配可能漏掉同义表达，可在关键词中补充常用同义词。
-
-Semantic Scholar 使用首批 bulk search 结果，不遍历全部分页。本地可设置 `SEMANTIC_SCHOLAR_API_KEY` 使用该平台的 API 密钥；Actions 可添加同名 Secret。
-
-## 本地运行
-
-需要 Python 3.10+。在仓库根目录使用独立环境安装依赖。
+需要 Python 3.10+。在仓库目录创建独立环境：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "openai>=1.0.0" requests feedparser
+python -m pip install -r requirements.txt
 ```
 
-在当前 shell 中设置 `OPENAI_API_KEY`、`NOTION_TOKEN` 和 `PAGE_ID`。按需设置 `OPENAI_BASE_URL`、`OPENAI_MODEL` 与 `QUERY_KEYWORDS`。本地使用 OrcaRouter 时，把 `OPENAI_BASE_URL` 设为 `https://api.orcarouter.ai/v1`、`OPENAI_MODEL` 设为 `deepseek/deepseek-v4-flash-free`，并通过 `OPENAI_API_KEY` 提供该平台的密钥。运行与 Actions 相同的摘要脚本。
+**只检索公开论文，不需要模型或 Notion 密钥：**
 
 ```bash
-python -u push_summary.py
+QUERY_KEYWORDS="multimodal alignment" python push_summary.py --fetch-only --output papers.md
 ```
 
-> [!NOTE]
-> 本地运行会实际请求论文源和模型，并写入 Notion。模型收到的是筛选后的标题与摘要摘录，每篇摘要最多 1500 字符。密钥应通过环境变量或 Actions Secrets 注入。
+**生成本地报告，不写入 Notion：** 先通过环境变量安全提供 `OPENAI_API_KEY`，再运行：
 
-Semantic Scholar 被限流时，报告会标记 CCF-A 检索不完整。两组数据都没有论文记录时，任务会停止生成摘要。
+```bash
+python push_summary.py --dry-run --output report.md
+```
+
+**写入 Notion：** 另外提供 `NOTION_TOKEN` 和 `PAGE_ID`，然后运行：
+
+```bash
+python push_summary.py
+```
+
+本地可设置 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。使用 OrcaRouter 时分别设为 `https://api.orcarouter.ai/v1`、`deepseek/deepseek-v4-flash-free`，并用 `OPENAI_API_KEY` 提供 OrcaRouter 密钥。
+
+脚本不会自动加载 `.env`。请通过当前进程环境或你自己的密钥管理方式注入；不要把真实密钥写进脚本、公开 issue 或截图。`--dry-run` 仍会调用模型，可能产生费用；只有 `--fetch-only` 不调用模型。
+
+## 数据流与已知边界
+
+[![GitHub Actions 获取论文，调用模型生成 Markdown，并追加到 Notion](assets/readme/workflow-zh.webp)](assets/readme/workflow-zh.webp)
+
+[可编辑流程图](assets/readme/workflow-zh.drawio) · [Actions 工作流](.github/workflows/main.yml) · [摘要脚本](push_summary.py)
+
+| 阶段 | 实际行为 |
+| --- | --- |
+| arXiv | 查询近 30 天候选并本地核验主题、日期和重复项，最多保留 12 条；API 暂不可用时尝试一次公开搜索页，从前 50 条候选筛选并标注覆盖限制 |
+| Semantic Scholar | 一次 bulk 请求限定主题、会场和日期；每会场最多 3 条，总计最多 12 条，不遍历后续分页 |
+| 模型 | 根据标题与摘要摘录生成 2–4 条中文样本观察；程序独立附加论文条目和数据源状态 |
+| Notion | 按标题、段落和列表生成区块，保留论文链接，按批次追加 |
+
+检索不是全文核验，摘要摘录每篇最多 1500 字符。模型生成内容可能出错，引用研究结论前仍需阅读原论文。两组来源都没有有效论文记录时，会停止生成，不让模型补造论文；单一来源不可用时保留明确提示。
+
+模型服务商会收到你的检索主题和筛选后的标题、摘要摘录。脚本不会读取已有 Notion 页面正文用于生成；报告写到你授权的目标页。代码没有添加维护者自己的用户追踪服务，第三方平台各自的数据处理规则仍然适用。
 
 ## 故障排查
 
-| 现象 | 优先检查 |
+| 现象 | 处理方式 |
 | --- | --- |
-| Actions 没有运行 | 检查仓库是否启用 Actions，手动触发一次以定位配置问题。 |
-| 模型鉴权或模型 ID 报错 | 检查所选服务商对应的 Secret、端点，以及烟测与正式摘要各自使用的模型。 |
-| Notion 返回权限或找不到页面错误 | 检查集成是否已添加为目标页面的连接，以及页面 ID 是否正确。 |
-| CCF-A 列表为空 | 查看是否有会场请求失败，再确认日期窗口内是否有返回条目。 |
-| 页面只出现 smoke test | 检查正式摘要步骤的日志，确认检索、模型请求及最终追加执行到了哪一步。 |
+| `Missing required configuration` | 检查服务商对应的模型 Secret、`NOTION_TOKEN` 和 `NOTION_PAGE_ID`；不要把 Secret 放成 Variable |
+| Notion 401 / 403 / 404 | 核对 token、页面 ID，以及集成是否连接到该页面 |
+| 模型鉴权、额度或模型不存在 | 查看当前服务商的密钥、账户额度与模型目录；不要把不同平台的密钥混用 |
+| 检索被限流 / 会场结果为空 | 查看数据源提示；可以稍后再试或调整关键词。空结果不证明没有相关论文 |
+| `No paper records retrieved` | 所有来源都没取得有效记录；本次未调用模型生成报告 |
+| 页面已写入一部分，但任务失败 | 先检查现有内容，避免直接重跑造成重复；Notion 的不明确写入失败不会被盲目重试 |
+| Fork 后定时任务没运行 | 确认启用了 Actions，先手动运行一次；再查看 GitHub 对定时工作流的当前限制 |
 
-**如何使用摘要。** 这份报告适合筛选值得读的论文。检索覆盖受关键词、会场、返回上限和日期过滤影响，趋势概括应回到原论文复核后再引用。
+## 反馈与使用授权
 
-## Notion 中会看到什么
+发现问题可提交 [Issue](https://github.com/Xiaoqian-Zhang-Shawno/notion-monthly-research/issues)，描述运行方式、错误类型、期望与实际行为。分享日志前请删去密钥、Notion 页面 ID、私人研究主题和个人信息。
 
-每次正式运行会追加一个以运行月份为标题的摘要区块组。下面是版式示意。
-
-```text
-YYYY 年 MM 月 · 研究论文追踪
-  检索主题与日期范围
-  样本观察
-  arXiv 论文列表
-  指定会场论文与检索状态
-```
-
-脚本将 Markdown 标题、列表和普通段落映射为相应的 Notion 区块。两个数据源都在服务端限定近 30 天，并在本地复核日期、主题及重复条目。论文列表、命中关键词、摘要摘录与数据源状态由程序直接保留。读到值得跟进的条目时，使用附带的来源链接打开论文，核对摘要引用的趋势和证据。
-
-## 仓库入口
-
-- [定时与手动触发配置](.github/workflows/main.yml) 包含依赖安装、服务烟测与脚本入口。
-- [push_summary.py](push_summary.py) 包含论文源查询、模型提示、区块转换和 Notion 写入逻辑。
-- [可编辑流程图](assets/readme/workflow-zh.drawio) 记录上述组件和数据流。
+<a id="使用与授权"></a>
+本项目为个人维护的公开源码工具，当前未采用 MIT 或其他标准开源许可证。具体权利边界见 [COPYRIGHT.md](COPYRIGHT.md)；商业集成、转售、托管或白标用途请先核实授权。正式的使用许可仍在整理，本说明不撤销已有合法权利，也不替代第三方组件自身的许可。
 
 <details>
 <summary>早期更新日志</summary>
 
-2025.06.06<br>
-_notion上成功更新了，这是伟大的开始_<br>
-我尝试接入gpt，更多期刊尝试更新抓取中，可以给我更多的推荐！！！<br>
-2025.09.22<br>
-md,gpt太贵了我更新了接口，可以使用所有大模型，我现在换成了deepseek<br>
+2025.06.06：首次成功将摘要写入 Notion。
+
+2025.09.22：切换模型接口，支持 OpenAI-compatible 配置。
+
+2026.11：新增可选 OrcaRouter、主题与日期核验、独立测试页、检索预览及来源状态提示。
 
 </details>
