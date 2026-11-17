@@ -191,7 +191,16 @@ def fetch_arxiv_papers(max_results=10) -> List[str]:
         "sortBy": "submittedDate",
         "sortOrder": "descending",
     }
-    response = requests.get("https://export.arxiv.org/api/query", params=params, timeout=30)
+    for attempt in range(3):
+        response = requests.get("https://export.arxiv.org/api/query", params=params, timeout=30)
+        if response.status_code not in (429, 503) or attempt == 2:
+            break
+        retry_after = response.headers.get("Retry-After", "")
+        delay = int(retry_after) if retry_after.isdigit() else 20 * (attempt + 1)
+        if delay > 60:
+            break
+        print(f"arXiv temporarily unavailable; retrying after {delay} seconds.")
+        time.sleep(delay)
     response.raise_for_status()
     feed = feedparser.parse(response.content)
     if feed.get("bozo") or feed.get("version") != "atom10":
@@ -329,11 +338,15 @@ def generate_summary_from_papers(arxiv_papers: List[str], ccf_a_papers: List[str
 def main():
     print(f"Keywords: {QUERY_KEYWORDS}")
     print("Fetching arXiv...")
-    papers = fetch_arxiv_papers(max_results=12)
+    try:
+        papers = fetch_arxiv_papers(max_results=12)
+    except (requests.RequestException, RuntimeError):
+        print("arXiv unavailable; checking the other source.")
+        papers = ["- （arXiv 请求失败或被限流，本次预印本检索不完整）"]
     print("Fetching CCF-A papers...")
     ccf_a_papers = fetch_ccf_a_papers(max_results_per_venue=3, max_total=12)
 
-    if not papers and not any("http" in item for item in ccf_a_papers):
+    if not any("http" in item for item in papers + ccf_a_papers):
         raise RuntimeError("No paper records retrieved; summary generation stopped.")
     print("Generating summary with configured model...")
     summary_md = generate_summary_from_papers(papers, ccf_a_papers)

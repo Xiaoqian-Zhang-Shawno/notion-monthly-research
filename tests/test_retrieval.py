@@ -39,7 +39,7 @@ class RetrievalTests(unittest.TestCase):
         ]
         for identifier, title, abstract, date in rows:
             entries.append(f'<entry><id>https://arxiv.org/abs/{identifier}</id><title>{escape(title)}</title><summary>{escape(abstract)}</summary><published>{date}T00:00:00Z</published><link href="https://arxiv.org/abs/{identifier}"/></entry>')
-        response = Mock(content=('<feed xmlns="http://www.w3.org/2005/Atom">' + "".join(entries) + '</feed>').encode())
+        response = Mock(status_code=200, content=('<feed xmlns="http://www.w3.org/2005/Atom">' + "".join(entries) + '</feed>').encode())
         with patch.object(summary.requests, "get", return_value=response) as get:
             papers = summary.fetch_arxiv_papers(10)
         self.assertEqual(len(papers), 1)
@@ -66,13 +66,26 @@ class RetrievalTests(unittest.TestCase):
         self.assertIn("example.org/2", papers[0])
         self.assertIn("首批", papers[-1])
 
+    def test_arxiv_rate_limit_respects_retry_after(self):
+        limited = Mock(status_code=429, headers={"Retry-After": "7"})
+        ok = Mock(status_code=200, content=b'<feed xmlns="http://www.w3.org/2005/Atom"></feed>')
+        with patch.object(summary.requests, "get", side_effect=[limited, ok]), patch.object(summary.time, "sleep") as sleep:
+            self.assertEqual(summary.fetch_arxiv_papers(), [])
+        sleep.assert_called_once_with(7)
+
+    def test_no_summary_when_both_sources_lack_records(self):
+        with patch.object(summary, "fetch_arxiv_papers", side_effect=summary.requests.Timeout), patch.object(summary, "fetch_ccf_a_papers", return_value=["- unavailable"]), patch.object(summary, "generate_summary_from_papers") as generate:
+            with self.assertRaises(RuntimeError):
+                summary.main()
+        generate.assert_not_called()
+
     def test_rate_limit_is_preserved_in_report(self):
         response = Mock(status_code=429)
         response.raise_for_status.side_effect = summary.requests.HTTPError(response=response)
         with patch.object(summary.requests, "get", return_value=response):
             warning = summary.fetch_ccf_a_papers()
         model = Mock()
-        model.chat.completions.create.return_value.choices = [Mock(message=Mock(content="- 观察"))]
+        model.chat.completions.create.return_value.choices = [Mock(message=Mock(status_code=200, content="- 观察"))]
         paper = "- [2026-11-16] Multimodal alignment (https://arxiv.org/abs/1234.5678)"
         with patch.object(summary, "client", model):
             report = summary.generate_summary_from_papers([paper], warning)
