@@ -1,68 +1,72 @@
 # notion-monthly-research
 
-**把关注的研究主题，变成 Notion 里可回溯来源的论文清单。**
+English | [简体中文](README.zh-CN.md)
 
-![notion-monthly-research 漫画封面，档案员将论文收入月度活页册](assets/readme/hero.webp)
+**Turn research topics into a traceable reading list in Notion.**
 
-![GitHub Actions、月度摘要、Notion 归档](assets/readme/product-strip.svg)
+![A research archivist organizing papers into a monthly notebook](assets/readme/hero.webp)
 
-为用 Notion 整理论文的研究者准备的个人工具：按关键词追踪近期 arXiv 论文与指定会场记录，生成中文样本观察，并把论文标题、日期、命中关键词和来源链接一起归档。每月自动运行，也可以手动触发。
+A personal research tool for people who organize papers in Notion. Track recent arXiv papers and records from selected venues, generate short observations, and archive paper titles, dates, matched keywords, abstract excerpts, and source links. Run it monthly with GitHub Actions or trigger it manually.
 
-[真实检索节选](examples/source-preview.md) · [首次运行](#首次运行) · [不接模型先试检索](#本地运行与预览) · [故障排查](#故障排查) · [使用与授权](#使用与授权)
+**The generated report currently uses Chinese headings and Chinese model observations.** Paper titles and abstract excerpts retain their source language. This English README does not change the report language.
 
-## 它能帮你做什么
+[Real retrieval example](examples/source-preview.en.md) · [Quick start](#quick-start) · [Preview locally](#local-use-and-previews) · [Troubleshooting](#troubleshooting) · [Usage and licensing](#usage-and-licensing)
 
-- **省去重复整理**：定期抓取、筛选和追加到自己授权的 Notion 页面。
-- **保留核验入口**：可点击的论文标题、日期和摘要摘录随报告保留，不只留一段模型总结。
-- **自行选择服务商**：默认 DeepSeek，可选 OrcaRouter；密钥由你自己配置。
-- **先预览再写入**：可只检索，或生成本地 Markdown；首次 Actions 试跑可创建独立子页面。
+## What it does
 
-适合已有研究主题、愿意配置 GitHub Actions 和 Notion 集成的用户。当前是可自行部署的研究工具，不是托管订阅服务，也不是完整的系统性综述检索平台。
+- **Automates recurring collection:** retrieves, filters, and appends results to a Notion page you authorize.
+- **Keeps the evidence:** clickable paper titles, dates, and abstract excerpts remain alongside the model's observations.
+- **Lets you choose a provider:** DeepSeek by default, with optional OrcaRouter support and your own API keys.
+- **Supports previews:** inspect retrieved papers without a model, generate local Markdown, or test delivery in a separate Notion child page.
 
-## 首次运行
+Designed for researchers with specific topics who are comfortable configuring GitHub Actions and a Notion integration. This is a self-deployed tool, not a hosted subscription or an exhaustive systematic-review search service.
 
-需要 GitHub 账号、可授权的 Notion 页面，以及所选服务商的 API 密钥。先阅读[使用与授权](#使用与授权)。
+## Quick start
 
-1. Fork 仓库，进入 **Actions**，启用工作流。
-2. 在 [Notion My Integrations](https://www.notion.com/my-integrations) 创建集成，保存 token；在目标页面的 **··· → 添加连接** 中授权该集成。复制页面 ID（URL 中的 32 位 ID，不是整个 URL）。
-3. 在仓库 **Settings → Secrets and variables → Actions → Secrets** 中添加以下三项：
+You need a GitHub account, a Notion page you can connect to an integration, and an API key for your selected model provider. Read [usage and licensing](#usage-and-licensing) before relying on permissions for your intended use.
 
-| Secret | 默认 DeepSeek | 使用 OrcaRouter |
+1. Fork the repository, open **Actions**, and enable workflows.
+2. Create an integration in [Notion My Integrations](https://www.notion.com/my-integrations) and save its token. On your target page, open **••• → Add connections** and connect the integration. Copy the page ID: the 32-character ID from the URL, not the entire URL. A hyphenated UUID is also accepted.
+3. Open **Settings → Secrets and variables → Actions → Secrets** in your repository and add these three secrets:
+
+| Secret | Default: DeepSeek | With OrcaRouter |
 | --- | --- | --- |
-| 模型密钥 | `DEEPSEEK_API_KEY` | `ORCAROUTER_API_KEY` |
-| Notion 集成 token | `NOTION_TOKEN` | `NOTION_TOKEN` |
-| 目标页面 ID | `NOTION_PAGE_ID` | `NOTION_PAGE_ID` |
+| Model API key | `DEEPSEEK_API_KEY` | `ORCAROUTER_API_KEY` |
+| Notion integration token | `NOTION_TOKEN` | `NOTION_TOKEN` |
+| Target page ID | `NOTION_PAGE_ID` | `NOTION_PAGE_ID` |
 
-4. 在同页的 **Variables** 中设置 `QUERY_KEYWORDS`，例如 `multimodal alignment, contrastive learning`。若使用 OrcaRouter，再设置 `LLM_PROVIDER=orcarouter`；不设置则使用 DeepSeek。
-5. 进入 **Actions → Monthly Notion Summary → Run workflow**。第一次建议勾选 `test_page`，把报告写到目标页下新建的独立子页面。`provider=configured` 使用仓库配置，也可单次指定服务商。
-6. 等待任务完成，在 Notion 检查“样本观察”、两组论文与数据源状态。测试模式会进一步核验报告章节和可点击的论文标题。之后不勾选 `test_page`，就会追加到目标页。
+4. Under **Variables**, set `QUERY_KEYWORDS`, for example `multimodal alignment, contrastive learning`. For OrcaRouter, also set `LLM_PROVIDER=orcarouter`. Otherwise, DeepSeek is used.
+5. Open **Actions → Monthly Notion Summary → Run workflow**. For your first run, select `test_page` to create a separate child page under the configured target. Keep `provider=configured` to use repository settings, or choose a provider for this run.
+6. After completion, check the Notion report: sample observations, the paper lists, and source-status notes. Test mode also verifies the report sections and clickable paper titles. Subsequent runs without `test_page` append directly to your target page.
 
-每月 1 日 **UTC 00:00 / 北京时间 08:00** 自动执行。重复运行会再次追加，暂不自动覆盖或跨次去重。若写入中途失败，应先检查已有区块再决定是否重跑。
+The scheduled run is on the **first day of each month at 00:00 UTC / 08:00 China Standard Time**. Reruns append again; there is no replacement or deduplication across separate runs. After a partial write failure, inspect the page before rerunning.
 
-## 可选服务商与费用
+## Providers and costs
 
-默认配置直连 [DeepSeek](https://platform.deepseek.com/)，使用 `deepseek-reasoner`。使用 OrcaRouter 时，当前预设模型为 `deepseek/deepseek-v4-flash-free`，端点为 `https://api.orcarouter.ai/v1`。模型可用性、额度和价格以服务商当前页面为准，不承诺永久免费。
+The default connects directly to [DeepSeek](https://platform.deepseek.com/) using `deepseek-reasoner`. The OrcaRouter preset uses `deepseek/deepseek-v4-flash-free` at `https://api.orcarouter.ai/v1`. Model availability, quotas, and prices depend on the provider's current catalog. Free availability is not guaranteed permanently.
 
-已有 OrcaRouter 账号可直接使用自己的密钥；新用户可以通过[项目推荐链接](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377)注册。**利益披露：符合平台归因与结算规则的付费消费，可能为维护者带来分成。** 使用推荐链接不是运行工具的前提，选择其他服务商也不影响工具功能。
+Existing OrcaRouter users can use their own keys. New users may register through the [project referral link](https://www.orcarouter.ai/ref/ref_cb687af623af382d6377). **Referral disclosure:** eligible paid usage attributed under the platform's rules may generate a commission for the maintainer. The link and the provider are optional.
 
-模型调用、GitHub Actions 和其他服务可能产生各自费用，请查看自己账号的额度。代码不会替你充值，也不会自动购买套餐。
+The partner integration guide describes referral-link attribution for new signups. An existing account using its own API key is not automatically attributed to the maintainer just because it runs this tool. This project does not currently implement authenticated application-based login attribution.
 
-## 配置参考
+Model calls, GitHub Actions, and other services may incur their own charges. Check your account quotas. The script does not purchase subscriptions or top up accounts.
 
-| 配置 | 放置位置 | 作用 |
+## Configuration
+
+| Setting | Location in GitHub Actions | Purpose |
 | --- | --- | --- |
-| `LLM_PROVIDER` | Actions Variable | `deepseek`（默认）或 `orcarouter` |
-| `QUERY_KEYWORDS` | Actions Variable | 逗号分隔的主题短语；也兼容旧版同名 Secret，Variable 优先 |
-| `CCF_A_VENUES` | Actions Variable | 可选的逗号分隔会场列表；不设置时使用脚本默认列表 |
-| `SEMANTIC_SCHOLAR_API_KEY` | Actions Secret | 可选，供 Semantic Scholar 请求使用 |
+| `LLM_PROVIDER` | Variable | `deepseek` (default) or `orcarouter` |
+| `QUERY_KEYWORDS` | Variable | Comma-separated topic phrases; the legacy Secret of the same name is also supported, with the Variable taking precedence |
+| `CCF_A_VENUES` | Variable | Optional comma-separated venue list; defaults to the list in the script |
+| `SEMANTIC_SCHOLAR_API_KEY` | Secret | Optional API key for Semantic Scholar requests |
 
-关键词按“任一完整短语命中”处理，检查标题和摘要，忽略大小写和连字符差异。例如 `CT` 不会误匹配 `activity`，但较宽的主题仍可能带来你不需要的论文。同义词和缩写应自行补充；它不是语义检索。
+A paper must match at least one complete keyword phrase in its title or abstract. Matching ignores case and hyphen differences, with word boundaries: `CT` does not match `activity`. Broad topics can still produce papers outside your intended scope. Add synonyms and abbreviations yourself; this is not semantic search.
 
-`CCF_A_VENUES` 是历史配置名称。实际会场以配置列表和 Semantic Scholar 索引为准，程序不负责认证当前 CCF 等级或穷尽全部会场。
+`CCF_A_VENUES` is a legacy configuration name. The configured list and Semantic Scholar's index determine the venues searched. The tool does not certify their current CCF ranking or cover every venue.
 
-## 本地运行与预览
+## Local use and previews
 
-需要 Python 3.10+。在仓库目录创建独立环境：
+Requires Python 3.10+. Create an isolated environment in the repository directory:
 
 ```bash
 python3 -m venv .venv
@@ -70,71 +74,79 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-**只检索公开论文，不需要模型或 Notion 密钥：**
+**Retrieve papers only, without model or Notion credentials:**
 
 ```bash
 QUERY_KEYWORDS="multimodal alignment" python push_summary.py --fetch-only --output papers.md
 ```
 
-**生成本地报告，不写入 Notion：** 先通过环境变量安全提供 `OPENAI_API_KEY`，再运行：
+**Generate a local report without writing to Notion:** securely provide `OPENAI_API_KEY` as an environment variable, then run:
 
 ```bash
 python push_summary.py --dry-run --output report.md
 ```
 
-**写入 Notion：** 另外提供 `NOTION_TOKEN` 和 `PAGE_ID`，然后运行：
+**Publish to Notion:** additionally provide `NOTION_TOKEN` and `PAGE_ID`, then run:
 
 ```bash
 python push_summary.py
 ```
 
-本地可设置 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。使用 OrcaRouter 时分别设为 `https://api.orcarouter.ai/v1`、`deepseek/deepseek-v4-flash-free`，并用 `OPENAI_API_KEY` 提供 OrcaRouter 密钥。
+For local OrcaRouter use, set `OPENAI_BASE_URL=https://api.orcarouter.ai/v1` and `OPENAI_MODEL=deepseek/deepseek-v4-flash-free`, and supply your OrcaRouter key through `OPENAI_API_KEY`.
 
-脚本不会自动加载 `.env`。请通过当前进程环境或你自己的密钥管理方式注入；不要把真实密钥写进脚本、公开 issue 或截图。`--dry-run` 仍会调用模型，可能产生费用；只有 `--fetch-only` 不调用模型。
+The script does not automatically load `.env`. Inject credentials through your process environment or your own secret-management tool. Do not put real keys in source files, public issues, or screenshots. `--dry-run` still calls the model and may incur charges; only `--fetch-only` skips the model.
 
-## 数据流与已知边界
+## How it works and its limits
 
-[![GitHub Actions 获取论文，调用模型生成 Markdown，并追加到 Notion](assets/readme/workflow-zh.webp)](assets/readme/workflow-zh.webp)
+```mermaid
+flowchart LR
+    A[Schedule or manual run] --> B[Retrieve recent papers]
+    B --> C[Filter topics, dates and duplicates]
+    C --> D[Generate Chinese sample observations]
+    D --> E[Append evidence and source status]
+    E --> F[Write linked report to Notion]
+```
 
-[可编辑流程图](assets/readme/workflow-zh.drawio) · [Actions 工作流](.github/workflows/main.yml) · [摘要脚本](push_summary.py)
+[Workflow](.github/workflows/main.yml) · [Script](push_summary.py) · [Editable diagram, Chinese](assets/readme/workflow-zh.drawio)
 
-| 阶段 | 实际行为 |
+| Stage | Behavior |
 | --- | --- |
-| arXiv | 查询近 30 天候选并本地核验主题、日期和重复项，最多保留 12 条；API 暂不可用时尝试一次公开搜索页，从前 50 条候选筛选并标注覆盖限制 |
-| Semantic Scholar | 一次 bulk 请求限定主题、会场和日期；每会场最多 3 条，总计最多 12 条，不遍历后续分页 |
-| 模型 | 根据标题与摘要摘录生成 2–4 条中文样本观察；程序独立附加论文条目和数据源状态 |
-| Notion | 按标题、段落和列表生成区块，保留论文链接，按批次追加 |
+| arXiv | Retrieves recent candidates and checks topic, date, and duplicates locally; retains up to 12 papers. If the API is unavailable, tries one public search page and filters its first 50 candidates, noting the coverage limit |
+| Semantic Scholar | Makes one bulk request with topic, venue, and date filters; retains up to 3 papers per venue and 12 in total, without following later result pages |
+| Model | Generates 2–4 Chinese observations from titles and abstract excerpts; the program appends paper records and source-status notes independently |
+| Notion | Converts headings, paragraphs, and lists into blocks; preserves paper links and appends in batches |
 
-检索不是全文核验，摘要摘录每篇最多 1500 字符。模型生成内容可能出错，引用研究结论前仍需阅读原论文。两组来源都没有有效论文记录时，会停止生成，不让模型补造论文；单一来源不可用时保留明确提示。
+This is not full-text verification. Abstract excerpts are limited to 1,500 characters per paper. Model observations may be wrong; read the original paper before citing a research conclusion. If neither source supplies valid paper records, generation stops. An unavailable individual source is explicitly reported.
 
-模型服务商会收到你的检索主题和筛选后的标题、摘要摘录。脚本不会读取已有 Notion 页面正文用于生成；报告写到你授权的目标页。代码没有添加维护者自己的用户追踪服务，第三方平台各自的数据处理规则仍然适用。
+Your model provider receives the query topics and selected paper titles and abstract excerpts. The script does not read existing Notion page content for generation. Reports are written to the page you authorize. No maintainer-operated user-tracking service has been added; each external platform's data policies still apply.
 
-## 故障排查
+## Troubleshooting
 
-| 现象 | 处理方式 |
+| Symptom | What to check |
 | --- | --- |
-| `Missing required configuration` | 检查服务商对应的模型 Secret、`NOTION_TOKEN` 和 `NOTION_PAGE_ID`；不要把 Secret 放成 Variable |
-| Notion 401 / 403 / 404 | 核对 token、页面 ID，以及集成是否连接到该页面 |
-| 模型鉴权、额度或模型不存在 | 查看当前服务商的密钥、账户额度与模型目录；不要把不同平台的密钥混用 |
-| 检索被限流 / 会场结果为空 | 查看数据源提示；可以稍后再试或调整关键词。空结果不证明没有相关论文 |
-| `No paper records retrieved` | 所有来源都没取得有效记录；本次未调用模型生成报告 |
-| 页面已写入一部分，但任务失败 | 先检查现有内容，避免直接重跑造成重复；Notion 的不明确写入失败不会被盲目重试 |
-| Fork 后定时任务没运行 | 确认启用了 Actions，先手动运行一次；再查看 GitHub 对定时工作流的当前限制 |
+| `Missing required configuration` | Check the selected provider's API Secret, `NOTION_TOKEN`, and `NOTION_PAGE_ID`. Do not store credentials as Variables |
+| Notion 401 / 403 / 404 | Check the token, page ID, and whether the integration is connected to that page |
+| Model authentication, quota, or missing-model error | Check the provider's key, account quota, and current model catalog; keys from different platforms are not interchangeable |
+| Rate-limited sources or empty venue results | Read the source-status notes; try later or revise the keywords. Empty results do not prove there are no relevant papers |
+| `No paper records retrieved` | Neither source supplied valid records; the model was not asked to generate a report |
+| Some blocks appeared before a failure | Inspect existing content before rerunning to avoid duplicates. Ambiguous Notion write failures are not blindly retried |
+| Scheduled runs missing after a fork | Enable Actions and run the workflow manually first; check GitHub's current restrictions on scheduled workflows |
 
-## 反馈与使用授权
+## Feedback
 
-发现问题可提交 [Issue](https://github.com/Xiaoqian-Zhang-Shawno/notion-monthly-research/issues)，描述运行方式、错误类型、期望与实际行为。分享日志前请删去密钥、Notion 页面 ID、私人研究主题和个人信息。
+Open an [issue](https://github.com/Xiaoqian-Zhang-Shawno/notion-monthly-research/issues) with your run mode, error type, and expected versus actual behavior. Remove API keys, private Notion page IDs, confidential research topics, and personal information from logs before sharing them.
 
-<a id="使用与授权"></a>
-本项目为个人维护的公开源码工具，当前未采用 MIT 或其他标准开源许可证。具体权利边界见 [COPYRIGHT.md](COPYRIGHT.md)；商业集成、转售、托管或白标用途请先核实授权。正式的使用许可仍在整理，本说明不撤销已有合法权利，也不替代第三方组件自身的许可。
+## Usage and licensing
+
+This is an independently maintained repository with publicly visible source code. It is **not currently licensed under MIT or another standard open-source license**. See [COPYRIGHT.md](COPYRIGHT.md) for the current rights notice. Commercial integration, resale, hosting, and white-label use require checking the applicable permissions with the maintainer.
+
+A complete end-user license is still being finalized. This notice does not revoke existing valid rights or replace the licenses of third-party components. Public visibility and a working referral link do not establish unrestricted commercial permission or platform acceptance of a future license.
 
 <details>
-<summary>早期更新日志</summary>
+<summary>Early project history</summary>
 
-2025.06.06：首次成功将摘要写入 Notion。
-
-2025.09.22：切换模型接口，支持 OpenAI-compatible 配置。
-
-2026.11：新增可选 OrcaRouter、主题与日期核验、独立测试页、检索预览及来源状态提示。
+- June 2025: first successful Notion delivery.
+- September 2025: switched model endpoint and added configurable OpenAI-compatible settings.
+- November 2026: optional OrcaRouter, topic/date checks, isolated test pages, retrieval previews, and explicit source-status notes.
 
 </details>

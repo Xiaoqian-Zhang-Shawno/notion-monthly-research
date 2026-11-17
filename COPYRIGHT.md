@@ -1,13 +1,17 @@
-# 权利与授权说明
+# Rights and licensing notice
 
-© 2025–2026 Xiaoqian Zhang (Shawno)。本说明仅涉及维护者依法享有权利的原创部分。
+English | [简体中文](COPYRIGHT.zh-CN.md)
 
-本项目当前未采用 MIT、Apache-2.0 或其他标准开源许可证。源代码公开可见不等于授予不受限制的商业集成、转售、再许可或白标服务权利。
+© 2025–2026 Xiaoqian Zhang (Shawno). This notice concerns only original material for which the maintainer lawfully holds the relevant rights.
 
-拟将受保护的代码或文档集成进对外产品，提供托管或白标服务、转售或向第三方交付的，请先与维护者核实授权范围，取得所需的许可。产品免费提供不当然意味着已经获得授权。
+This project is not currently licensed under MIT, Apache-2.0, or another standard open-source license. Publicly visible source code does not grant unrestricted rights to commercial integration, resale, sublicensing, or white-label services.
 
-本说明不新增商业授权，也不撤销已经有效取得的既有权利。适用法律允许的使用、GitHub 平台条款授予的权限、第三方材料自身的许可及既有协议不受本说明改变。历史版本和 README 指引应按其发布及授权语境判断。
+Before integrating protected code or documentation into an externally offered product, providing hosted or white-label services, reselling it, or delivering it to third parties, check the scope of your permissions with the maintainer and obtain any necessary license. Offering a product free of charge does not by itself establish permission.
 
-项目不主张对通用功能、思想、方法、公共领域内容或第三方作品享有专有权。依赖库、论文及摘要、平台名称和标识等权利归相应权利人。不得将使用项目名称说明来源理解为获得维护者背书。
+This notice grants no new commercial license and does not revoke existing valid rights. It does not change uses permitted by applicable law, permissions under GitHub's platform terms, third-party licenses, or existing agreements. Historical versions and README instructions must be assessed in their original publication and authorization context.
 
-授权咨询可通过仓库维护者提出；公开 issue 只需说明咨询意向，不要包含客户信息、未公开源码、证件或其他保密资料。
+The project claims no exclusive rights over general functionality, ideas, methods, public-domain material, or third-party works. Dependencies, papers and abstracts, and platform names and marks remain subject to their respective owners' rights. Identifying this project as a source does not imply endorsement by its maintainer.
+
+Contact the repository maintainer for licensing inquiries. A public issue should contain only a general inquiry, not customer information, unpublished source code, identity documents, or other confidential material.
+
+This is a rights notice, not a complete end-user license. The Chinese version is provided alongside this translation; neither version independently grants additional permissions.
